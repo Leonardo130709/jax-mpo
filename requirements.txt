@@ -1,0 +1,9 @@
+jax
+optax
+rlax
+chex
+haiku
+matplotlib
+numpy
+tensorflow_probability
+dm_control

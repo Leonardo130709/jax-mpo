@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 from statistics import mean
+from collections import defaultdict
 from .mpo import MPO
 from . import utils
 
@@ -12,6 +13,7 @@ class RLAlg:
         self.env = utils.make_env(config.task)
         self.agent = MPO(config, self.env, self.rng)
         self.buffer = utils.ReplayBuffer(config.buffer_capacity)
+        self.callback = defaultdict(list)
         self.interaction_count = 0
 
     def learn(self):
@@ -34,8 +36,21 @@ class RLAlg:
                 obs = next_obs
 
             transitions = self.buffer.sample(self.config.batch_size)
-            self.agent._state, metrics = self.agent.step(self.agent._state, *transitions)
+            transitions = jax.tree_map(jnp.asarray, transitions)
+            metrics = self.agent.step(*transitions)
 
-            if self.interaction_count % 1000 == 0:
-                scores = [utils.evaluate(utils.make_env(self.config.task), self.agent.act) for _ in range(3)]
+            for k, v in metrics.items():
+                self.callback[k].append(v)
+
+            if self.interaction_count % 10000 == 0:
+                scores = [utils.evaluate(utils.make_env(self.config.task), self.agent.act) for _ in range(10)]
                 print(self.interaction_count, mean(scores))
+                self.callback['scores'].append(mean(scores))
+                # import matplotlib.pyplot as plt
+                # from IPython.display import clear_output
+                # clear_output(wait=True)
+                # for k, v in self.callback.items():
+                #     plt.plot(v, label=k)
+                #     plt.legend()
+                #     plt.show()
+

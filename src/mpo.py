@@ -62,7 +62,7 @@ class MPO:
             return jnp.mean(loss)
 
         def kl_and_dual_loss(alpha, kl):
-            chex.assert_rank(kl, 2)
+            chex.assert_rank([alpha, kl], [1, 2])
 
             loss_kl = jnp.sum(jax.lax.stop_gradient(alpha)*kl, axis=-1)
             loss_alpha = jnp.sum(alpha*(self.config.epsilon_alpha - jax.lax.stop_gradient(kl)), axis=-1)
@@ -85,14 +85,14 @@ class MPO:
             metrics = dict(
                 ce_loss=ce_loss,
                 kl=jnp.mean(jnp.sum(kl, axis=-1)),
-                alpha_loss=alpha_loss,
-                temperature_loss=temperature_loss,
+                temperature=temperature,
+                alpha=jnp.mean(alpha)
             )
             return total_loss, metrics
 
-        @jax.jit
-        @chex.assert_max_traces(n=1)
+        @chex.assert_max_traces(n=10)
         def _step(mpostate, states, actions, rewards, done_flags, next_states):
+            # import pdb; pdb.set_trace()
             chex.assert_rank(
                 [states, actions, rewards, done_flags, next_states],
                 [2, 2, 1, 1, 2]
@@ -105,6 +105,7 @@ class MPO:
 
             target_dist = self.actor(target_actor_params, next_states)
             sampled_actions = target_dist.sample(seed=subkey, sample_shape=self.config.num_actions)
+            log_probs = target_dist.log_prob(sampled_actions)
 
             sa = jnp.repeat(next_states[None], repeats=self.config.num_actions, axis=0)
             sa = jnp.concatenate([sa, sampled_actions], axis=-1)
@@ -117,7 +118,11 @@ class MPO:
 
             (actor_grads, dual_grads), metrics = jax.grad(policy_improvement, argnums=(0, 1), has_aux=True)\
                 (actor_params, dual_params, next_states, sampled_actions, target_dist, q_values)
-            metrics.update(critic_loss=critic_loss)
+            metrics.update(critic_loss=critic_loss,
+                           mean_reward=jnp.mean(rewards),
+                           mean_value=jnp.mean(target_values),
+                           entropy=-jnp.mean(log_probs)
+                           )
 
             actor_updates, actor_optim_state = self.actor_optim.update(actor_grads, actor_optim_state)
             actor_params = optax.apply_updates(actor_params, actor_updates)
@@ -143,10 +148,10 @@ class MPO:
             )
             return new_state, metrics
 
-        self.step = _step
+        self._step = jax.jit(_step)
 
         @jax.jit
-        @chex.assert_max_traces(n=1)
+        @chex.assert_max_traces(n=2)
         def _select_action(actor_params, rng_key, observation, training):
             dist = self.actor(actor_params, observation)
             action = jax.lax.select(
@@ -156,16 +161,19 @@ class MPO:
             )
             return action
 
-        def _act(observation, training):
-            key = self._state.random_key
-            actor_params = self._state.actor_params
-            key, subkey = jax.random.split(key, 2)
-            action = _select_action(actor_params, subkey, observation, training)
+        self._select_action = _select_action
 
-            self._state = self._state._replace(random_key=key)
-            return action
+    def act(self, observation, training):
+        key = self._state.random_key
+        actor_params = self._state.actor_params
+        key, subkey = jax.random.split(key, 2)
+        action = self._select_action(actor_params, subkey, observation, training)
+        self._state = self._state._replace(random_key=key)
+        return action
 
-        self.act = _act
+    def step(self, states, actions, rewards, done_flags, next_states):
+        self._state, metrics = self._step(self._state, states, actions, rewards, done_flags, next_states)
+        return metrics
 
     def _build(self, rng_key):
         if isinstance(rng_key, int):
@@ -183,10 +191,13 @@ class MPO:
         dummy_state_action = jnp.zeros(self.obs_dim + self.act_dim)
         actor_params = self.actor.init(actor_key, dummy_state)
         critic_params = self.critic.init(critic_key, dummy_state_action)
-        dual_params = (jnp.zeros([]), jnp.zeros(self.act_dim))
+        init_duals = jnp.log(jnp.exp(self.config.init_duals) - 1.)
+        dual_params = (init_duals, jnp.full(self.act_dim, init_duals))
 
-        self.actor_optim = optax.adam(learning_rate=self.config.actor_lr)
-        self.critic_optim = optax.adam(learning_rate=self.config.critic_lr)
+        self.actor_optim = optax.chain(optax.clip_by_global_norm(self.config.max_grad),
+                                       optax.adam(learning_rate=self.config.actor_lr))
+        self.critic_optim = optax.chain(optax.clip_by_global_norm(self.config.max_grad),
+                                        optax.adam(learning_rate=self.config.critic_lr))
         self.dual_optim = optax.adam(learning_rate=self.config.dual_lr)
         actor_optim_state = self.actor_optim.init(actor_params)
         critic_optim_state = self.critic_optim.init(critic_params)
