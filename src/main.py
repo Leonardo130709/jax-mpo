@@ -4,6 +4,7 @@ from statistics import mean
 from collections import defaultdict
 from .mpo import MPO
 from . import utils
+import jax.profiler
 
 
 class RLAlg:
@@ -14,10 +15,11 @@ class RLAlg:
         self.agent = MPO(config, self.env, self.rng)
         self.buffer = utils.ReplayBuffer(config.buffer_capacity)
         self.callback = defaultdict(list)
-        self.interaction_count = 0
+        self.interactions_count = 0
 
     def learn(self):
         obs = None
+        jax.profiler.start_trace('logdir')
         while True:
             if obs is None:
                 obs = self.env.reset().observation
@@ -28,7 +30,7 @@ class RLAlg:
             done = ts.last()
             next_obs = ts.observation
             self.buffer.add(obs, action, reward, done, next_obs)
-            self.interaction_count += 1
+            self.interactions_count += 1
 
             if done:
                 obs = None
@@ -38,19 +40,21 @@ class RLAlg:
             transitions = self.buffer.sample(self.config.batch_size)
             transitions = jax.tree_map(jnp.asarray, transitions)
             metrics = self.agent.step(*transitions)
+            if self.interactions_count == 4:
+                jax.profiler.stop_trace()
 
             for k, v in metrics.items():
                 self.callback[k].append(v)
 
-            if self.interaction_count % 10000 == 0:
+            if self.interactions_count % 10000 == 0:
                 scores = [utils.evaluate(utils.make_env(self.config.task), self.agent.act) for _ in range(10)]
-                print(self.interaction_count, mean(scores))
+                print(self.interactions_count, mean(scores))
                 self.callback['scores'].append(mean(scores))
-                # import matplotlib.pyplot as plt
-                # from IPython.display import clear_output
-                # clear_output(wait=True)
-                # for k, v in self.callback.items():
-                #     plt.plot(v, label=k)
-                #     plt.legend()
-                #     plt.show()
+                import matplotlib.pyplot as plt
+                from IPython.display import clear_output
+                clear_output(wait=True)
+                for k, v in self.callback.items():
+                    plt.plot(v, label=k)
+                    plt.legend()
+                    plt.show()
 

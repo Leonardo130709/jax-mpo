@@ -1,4 +1,3 @@
-import functools
 from typing import NamedTuple, Any
 
 import chex
@@ -7,7 +6,6 @@ import jax.numpy as jnp
 import jax.scipy
 import rlax
 import optax
-import haiku as hk
 import tensorflow_probability.substrates.jax as tfp
 from .networks import networks_factory
 tfd = tfp.distributions
@@ -43,7 +41,7 @@ class MPO:
             return jnp.mean(rlax.l2_loss(values, target_values))
 
         def weight_and_temperature_loss(temperature, q_values):
-            chex.assert_rank(q_values, 2)
+            chex.assert_rank([temperature, q_values], [0, 2])
 
             tempered_q_value = q_values / temperature
             normalized_weights = jax.nn.softmax(tempered_q_value, axis=0)
@@ -53,46 +51,60 @@ class MPO:
             log_num_actions = jnp.log(q_values.shape[0])
             temperature_loss = self.config.epsilon_eta + jnp.mean(q_logsumexp) - log_num_actions
             temperature_loss = temperature * temperature_loss
-            return temperature_loss, normalized_weights
+            return jnp.mean(temperature_loss), normalized_weights
 
         def cross_entropy_loss(online_dist, sampled_actions, normalized_weights):
             chex.assert_rank([sampled_actions, normalized_weights], [3, 2])
+
             log_probs = jnp.sum(online_dist.log_prob(sampled_actions), axis=-1)
             loss = -jnp.sum(normalized_weights * log_probs, axis=0)
             return jnp.mean(loss)
 
-        def kl_and_dual_loss(alpha, kl):
+        def kl_and_dual_loss(kl, alpha, epsilon):
             chex.assert_rank([alpha, kl], [1, 2])
 
             loss_kl = jnp.sum(jax.lax.stop_gradient(alpha)*kl, axis=-1)
-            loss_alpha = jnp.sum(alpha*(self.config.epsilon_alpha - jax.lax.stop_gradient(kl)), axis=-1)
+            loss_alpha = jnp.sum(alpha * jax.lax.stop_gradient(epsilon - kl), axis=-1)
             return jnp.mean(loss_alpha), jnp.mean(loss_kl)
 
         def policy_improvement(actor_params, dual_params, states, actions, target_dist, q_values):
             chex.assert_rank([actions, q_values], [3, 2])
 
+            states = jax.lax.stop_gradient(states)
             online_dist = self.actor(actor_params, states)
-            temperature, alpha = jax.tree_map(jax.nn.softplus, dual_params)
+            temperature, alpha_mean, alpha_std = jax.tree_map(jax.nn.softplus, dual_params)
 
             temperature_loss, normalized_weights = weight_and_temperature_loss(temperature, q_values)
             ce_loss = cross_entropy_loss(online_dist, actions, normalized_weights)
 
-            kl = tfd.kl_divergence(online_dist, target_dist)
-            alpha_loss, kl_loss = kl_and_dual_loss(alpha, kl)
+            mean, std = online_dist.distribution.loc, online_dist.distribution.scale
+            fixed_mean = tfd.Normal(jax.lax.stop_gradient(mean), std)
+            fixed_std = tfd.Normal(mean, jax.lax.stop_gradient(std))
+            fixed_mean_online, fixed_std_online = map(tfp.bijectors.Tanh(),
+                                                         (fixed_mean, fixed_std))
 
-            total_loss = ce_loss + kl_loss + alpha_loss + temperature_loss
+            kl_mean = tfd.kl_divergence(fixed_std_online, target_dist)
+            kl_std = tfd.kl_divergence(fixed_mean_online, target_dist)
+
+            alpha_mean_loss, kl_mean_loss = kl_and_dual_loss(
+                kl_mean, alpha_mean, self.config.epsilon_alpha_mean)
+            alpha_std_loss, kl_std_loss = kl_and_dual_loss(
+                kl_std, alpha_std, self.config.epsilon_alpha_std)
+
+            total_loss = ce_loss + kl_mean_loss + kl_std_loss + alpha_mean_loss + alpha_std_loss + temperature_loss
 
             metrics = dict(
                 ce_loss=ce_loss,
-                kl=jnp.mean(jnp.sum(kl, axis=-1)),
+                kl_mean=jnp.mean(jnp.sum(kl_mean, axis=-1)),
+                kl_std=jnp.mean(jnp.sum(kl_std, axis=-1)),
                 temperature=temperature,
-                alpha=jnp.mean(alpha)
+                alpha_mean=jnp.mean(alpha_mean),
+                alpha_std=jnp.mean(alpha_std)
             )
             return total_loss, metrics
 
-        @chex.assert_max_traces(n=10)
+        @chex.assert_max_traces(n=3)
         def _step(mpostate, states, actions, rewards, done_flags, next_states):
-            # import pdb; pdb.set_trace()
             chex.assert_rank(
                 [states, actions, rewards, done_flags, next_states],
                 [2, 2, 1, 1, 2]
@@ -149,6 +161,7 @@ class MPO:
             return new_state, metrics
 
         self._step = jax.jit(_step)
+        # self._step = _step
 
         @jax.jit
         @chex.assert_max_traces(n=2)
@@ -192,7 +205,9 @@ class MPO:
         actor_params = self.actor.init(actor_key, dummy_state)
         critic_params = self.critic.init(critic_key, dummy_state_action)
         init_duals = jnp.log(jnp.exp(self.config.init_duals) - 1.)
-        dual_params = (init_duals, jnp.full(self.act_dim, init_duals))
+        dual_params = (init_duals,
+                       jnp.full(self.act_dim, init_duals),
+                       jnp.full(self.act_dim, init_duals))
 
         self.actor_optim = optax.chain(optax.clip_by_global_norm(self.config.max_grad),
                                        optax.adam(learning_rate=self.config.actor_lr))

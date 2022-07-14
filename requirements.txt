@@ -2,7 +2,8 @@ jax
 optax
 rlax
 chex
-haiku
+distrax
+dm-haiku
 matplotlib
 numpy
 tensorflow_probability
