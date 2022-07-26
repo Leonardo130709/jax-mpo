@@ -20,7 +20,7 @@ class Config:
     critic_layers: tuple = (100, 50)
     actor_tau: float = .01
     critic_tau: float = .01
-    max_grad: float = 10.
+    max_grad: float = 20.
 
     seed: int = 0
     task: str = 'cartpole_balance'

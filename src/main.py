@@ -19,7 +19,6 @@ class RLAlg:
 
     def learn(self):
         obs = None
-        jax.profiler.start_trace('logdir')
         while True:
             if obs is None:
                 obs = self.env.reset().observation
@@ -40,8 +39,6 @@ class RLAlg:
             transitions = self.buffer.sample(self.config.batch_size)
             transitions = jax.tree_map(jnp.asarray, transitions)
             metrics = self.agent.step(*transitions)
-            if self.interactions_count == 4:
-                jax.profiler.stop_trace()
 
             for k, v in metrics.items():
                 self.callback[k].append(v)
@@ -50,11 +47,11 @@ class RLAlg:
                 scores = [utils.evaluate(utils.make_env(self.config.task), self.agent.act) for _ in range(10)]
                 print(self.interactions_count, mean(scores))
                 self.callback['scores'].append(mean(scores))
-                import matplotlib.pyplot as plt
-                from IPython.display import clear_output
-                clear_output(wait=True)
-                for k, v in self.callback.items():
-                    plt.plot(v, label=k)
-                    plt.legend()
-                    plt.show()
+                # import matplotlib.pyplot as plt
+                # from IPython.display import clear_output
+                # clear_output(wait=True)
+                # for k, v in self.callback.items():
+                #     plt.plot(v, label=k)
+                #     plt.legend()
+                #     plt.show()
 

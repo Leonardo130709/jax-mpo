@@ -20,7 +20,7 @@ class Actor(hk.Module):
         out = self.mlp(state)
         mean, stddev = jnp.split(out, 2, -1)
         mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
-        stddev = jax.nn.softplus(stddev) + 1e-4
+        stddev = jax.nn.softplus(stddev) + 1e-3
         dist = tfd.Normal(mean, stddev)
         return tfp.bijectors.Tanh()(dist)
 
