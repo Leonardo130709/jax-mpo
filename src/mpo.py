@@ -74,7 +74,7 @@ class MPO:
             mean, std = online_dist.distribution.loc, online_dist.distribution.scale
             fixed_mean = tfd.Normal(jax.lax.stop_gradient(mean), std)
             fixed_std = tfd.Normal(mean, jax.lax.stop_gradient(std))
-            fixed_mean_online, fixed_std_online = map(lambda d: tfp.bijectors.Tanh(d),
+            fixed_mean_online, fixed_std_online = map(lambda d: tfp.bijectors.Tanh()(d),
                                                          (fixed_mean, fixed_std))
 
             temperature_loss, normalized_weights = weight_and_temperature_loss(

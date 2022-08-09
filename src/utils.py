@@ -98,6 +98,7 @@ def simulate(env, policy, training=False):
     obs = env.reset().observation
     tr = defaultdict(list)
     while not done:
+        obs = jax.tree_util.tree_map(jnp.asarray, obs)
         action = policy(obs, training)
         ts = env.step(action)
         next_obs = ts.observation
