@@ -1,11 +1,14 @@
-import numpy as np
-from dm_env import specs
-from typing import Any
-import dm_env
-from dm_control import suite
+from typing import Any, NamedTuple
 from collections import defaultdict, deque
-from typing import NamedTuple
+
+import dm_env
+from dm_env import specs
+from dm_control import suite
+import dm_control.rl.control
 import jax
+import jax.numpy as jnp
+import numpy as np
+import tensorflow as tf
 
 
 class Wrapper(dm_env.Environment):
@@ -55,9 +58,8 @@ class Wrapper(dm_env.Environment):
     def observation_spec(self) -> dm_env.specs.Array:
         return self.env.observation_spec()
 
-    # TODO: explicit declaration
-    def __getattr__(self, item):
-        return getattr(self.env, item)
+    def __getattr__(self, name):
+        return getattr(self.env, name)
 
     @property
     def unwrapped(self) -> dm_env.Environment:
@@ -68,35 +70,34 @@ class Wrapper(dm_env.Environment):
 
 
 class StatesWrapper(Wrapper):
-    """ Converts OrderedDict obs to 1-dim np.ndarray[np.float32]. """
-    def observation(self, timestamp):
-        obs = []
-        for v in timestamp.observation.values():
-            if v.ndim == 0:
-                v = v[None]
-            obs.append(v.flatten())
-        obs = np.concatenate(obs)
-        return obs.astype(np.float32)
+    """Converts OrderedDict obs to 1-dim np.ndarray[np.float32].
+    Does a similar thing as dm_control/flatten_observation."""
+    def observation(self, timestep):
+        return dm_control.rl.control.flatten_observation(timestep.observation)
 
     def observation_spec(self):
-        dim = sum((np.prod(ar.shape) for ar in self.env.observation_spec().values()))
-        return specs.Array(shape=(dim,), dtype=np.float32, name='states')
+        dim = sum(
+            np.prod(ar.shape) for ar in self.env.observation_spec().values()
+        )
+        return dm_env.specs.Array(shape=(dim,), dtype=np.float32, name='states')
 
 
-def make_env(task_name):
+def make_env(task_name, task_kwargs=None, environment_kwargs=None):
     domain, task = task_name.split('_', maxsplit=1)
-    env = suite.load(domain, task)
+    if domain == "ball":
+        domain = "bal_in_cup"
+        task = "catch"
+    env = suite.load(domain, task,
+                     task_kwargs=task_kwargs,
+                     environment_kwargs=environment_kwargs)
     return StatesWrapper(env)
 
 
-def simulate(env, policy, training=False, init_obs=None, num_actions=50):
-    if init_obs is None:
-        ts = env.reset()
-        obs = ts.observation
-    else:
-        obs = init_obs
+def simulate(env, policy, training=False):
+    done = False
+    obs = env.reset().observation
     tr = defaultdict(list)
-    for i in range(num_actions):
+    while not done:
         action = policy(obs, training)
         ts = env.step(action)
         next_obs = ts.observation
@@ -106,13 +107,10 @@ def simulate(env, policy, training=False, init_obs=None, num_actions=50):
         tr['actions'].append(action)
         tr['rewards'].append(reward)
         tr['done_flags'].append(done)
+        tr['next_observation'].append(next_obs)
         obs = next_obs
-        if done:
-            obs = None
 
-    for k, v in tr.items():
-        tr[k] = np.array(v)
-    return tr, obs
+    return {k: np.array(v) for k, v in tr.items()}
 
 
 class Transition(NamedTuple):
@@ -124,17 +122,31 @@ class Transition(NamedTuple):
 
 
 class ReplayBuffer:
-    def __init__(self, capacity):
+    def __init__(self, capacity, batch_size):
         self._data = deque(maxlen=capacity)
+        self._batch_size = batch_size
 
-    def add(self, state, action, reward, done, next_state):
-        tr = Transition(state, action, reward, done, next_state)
-        self._data.append(tr)
+    def add(self, tr):
+        transitions = map(tr.get, ('observations', 'actions', 'rewards',
+                                   'done_flags', 'next_observation'))
+        for state, action, reward, done, next_state in zip(*transitions):
+            self._data.append(
+                Transition(state, action, reward, done, next_state))
 
     def sample(self, size):
         idx = np.random.randint(len(self._data), size=size)
         transitions = [self._data[i] for i in idx]
         return jax.tree_map(lambda *t: jax.numpy.stack(t), *transitions)
+
+    def as_dataset(self, size):
+        samples = self.sample(size)
+        ds = tf.data.Dataset.from_tensor_slices(samples)
+        ds = ds.batch(self._batch_size,
+                      drop_remainder=True,
+                      num_parallel_calls=tf.data.AUTOTUNE)
+        # ds = ds.map(lambda x: jax.tree_map(lambda t: jnp.asarray(memoryview(t)), x))
+        return ds.prefetch(tf.data.AUTOTUNE)\
+            .as_numpy_iterator()
 
 
 def evaluate(env, policy):
