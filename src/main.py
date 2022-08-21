@@ -1,59 +1,43 @@
-from statistics import mean
-from collections import defaultdict
-
-import jax
+import jax.random
 import jax.numpy as jnp
-import jax.profiler
 
-from .mpo import MPO
-from . import utils
+from .config import MPOConfig
+from .learner import MPOLearner
+from .networks import make_networks
+from .learner import MPOState
 
-jax.config.update('jax_disable_jit', True)
+from dm_control import suite
+from dmc_wrappers import StatesWrapper
 
+env = suite.load('cartpole', 'balance')
+env = StatesWrapper(env)
+config = MPOConfig()
 
-class RLAlg:
-    def __init__(self, config):
-        self.config = config
-        self.rng = jax.random.PRNGKey(config.seed)
-        self.env = utils.make_env(config.task,
-                                  task_kwargs={'random': config.seed})
-        self.agent = MPO(config, self.env, self.rng)
-        self.buffer = utils.ReplayBuffer(config.buffer_capacity,
-                                         config.batch_size)
-        self.callback = defaultdict(list)
-        self.interactions_count = 0
+networks = make_networks(config, env.observation_spec(), env.action_spec())
+import optax
 
-    def learn(self):
-        jax.profiler.start_trace('/tmp/tensorboard')
-        while True:
-            tr = utils.simulate(self.env, self.agent.act, training=True)
-            int_count = len(tr['actions'])
-            self.interactions_count += int_count
-            self.buffer.add(tr)
+optim = optax.multi_transform({
+    'encoder': optax.sgd(1),
+    'critic': optax.sgd(1),
+    'actor': optax.sgd(1),
+    'dual_params': optax.sgd(1)
+}, ('encoder', 'critic', 'actor', 'dual_params'))
 
-            ds = self.buffer.as_dataset(self.config.spi * len(tr['actions']))
-            for transitions in ds:
-                metrics = self.agent.step(*transitions)
-                for k, v in metrics.items():
-                    self.callback[k].append(v)
+key = jax.random.PRNGKey(0)
+encoder_params, critic_params, actor_params = networks.init(key)
+dual_params = (jnp.zeros(()), jnp.zeros((1,)), jnp.zeros((1,)))
 
-            jax.profiler.stop_trace()
+opt_state = optim.init((encoder_params, critic_params, actor_params, dual_params))
 
-            if self.interactions_count % 10000 == 0:
-                scores = [
-                    utils.simulate(
-                        utils.make_env(self.config.task),
-                        self.agent.act,
-                        training=False
-                    ) for _ in range(10)]
-                print(f'Interactions{self.interactions_count}, '
-                      f'score= {mean(scores)}')
-                self.callback['scores'].append(mean(scores))
-                # import matplotlib.pyplot as plt
-                # from IPython.display import clear_output
-                # clear_output(wait=True)
-                # for k, v in self.callback.items():
-                #     plt.plot(v, label=k)
-                #     plt.legend()
-                #     plt.show()
+state = MPOState(actor_params=actor_params,
+                 target_actor_params=actor_params,
+                 critic_params=critic_params,
+                 target_critic_params=critic_params,
+                 encoder_params=encoder_params,
+                 target_encoder_params=encoder_params,
+                 dual_params=dual_params,
+                 optim_state=opt_state,
+                 key=key)
 
+learner = MPOLearner(config, networks, optim, None, state)
+learner.learn()

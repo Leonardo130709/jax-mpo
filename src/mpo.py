@@ -1,3 +1,4 @@
+import functools
 from typing import NamedTuple, Any
 import re
 
@@ -160,6 +161,7 @@ class MPO:
         self._step = jax.jit(_step)
         self._step = _step
 
+        # @functools.partial(jax.jit, static_argnums=(3,))
         @chex.assert_max_traces(n=2)
         def _select_action(params, rng_key, observation, training):
             dist = self.networks.policy(params, observation)

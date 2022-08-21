@@ -8,3 +8,4 @@ matplotlib
 numpy
 tensorflow_probability
 dm_control
+dm-reverb
