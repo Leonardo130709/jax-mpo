@@ -1,11 +1,11 @@
+numpy
+matplotlib
 jax
 optax
 rlax
 chex
-distrax
 dm-haiku
-matplotlib
-numpy
+tensorflow
 tensorflow_probability
 dm_control
 dm-reverb

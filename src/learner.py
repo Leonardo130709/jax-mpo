@@ -45,6 +45,7 @@ class MPOLearner:
         params = networks.init(subkey)
         optim_state = optim.init(params)
         encoder_params, critic_params, actor_params, dual_params = params
+        self._client.insert(params, {'weights': 1.})
 
         self._state = MPOState(
             actor_params=actor_params,
@@ -143,7 +144,7 @@ class MPOLearner:
             )
             dual_loss = temperature_loss + alpha_mean_loss + alpha_stddev_loss
 
-            metrics = None
+            metrics = {}
             return jnp.mean(ce_loss + kl_loss + dual_loss), metrics
 
         def step(mpostate, data):
@@ -207,6 +208,8 @@ class MPOLearner:
             target_critic_params = optax.incremental_update(critic_params, target_critic_params, config.critic_polyak)
             target_actor_params = optax.incremental_update(actor_params, target_actor_params, config.actor_polyak)
 
+            metrics.update(reward=jnp.mean(rewards))
+
             return MPOState(
                 actor_params=actor_params,
                 target_actor_params=target_actor_params,
@@ -227,19 +230,9 @@ class MPOLearner:
             if data:
                 self._step += 1
                 self._state, metrics = self._step(self._state, data)
-
-
-
-class Transition(NamedTuple):
-    observations: Any
-    actions: Any
-    rewards: Any
-    next_observations: Any
-
-k = 30
-what = Transition(
-    observations=jnp.zeros((k, 5)),
-    actions=jnp.zeros((k, 1)),
-    rewards=jnp.zeros((k, 1)),
-    next_observations=jnp.zeros((k, 5))
-)
+                params = tuple(map(
+                    lambda name: getattr(self._state, name),
+                    ('encoder_params', "critic_params", "actor_params", "dual_params")
+                ))
+                self._client.insert(params, {'weights': 1.})
+                print(self._step, metrics)

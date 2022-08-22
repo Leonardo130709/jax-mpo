@@ -1,38 +1,43 @@
-from typing import NamedTuple
+from typing import NamedTuple, Any
 from dm_control import suite
 from dm_env import specs
-from dmc_wrappers import StatesWrapper
+import dmc_wrappers
 
+import numpy as np
 import reverb
 import tensorflow as tf
 import jax
 import optax
 
 from .config import MPOConfig
-from .actor import Transitions, Actor
+from .actor import Actor
 from .networks import MPONetworks, make_networks
-from .learner import MPOLearner, MPOState
+from .learner import MPOLearner
 
 
 class EnvironmentSpecs(NamedTuple):
-    observation: specs.Array
-    action: specs.Array
-    reward: specs.Array
+    observation: Any
+    action: Any
+    reward: Any
 
 
 class Builder:
     def __init__(self, config: MPOConfig):
         self._c = config
 
-    def make_reverb_tables(self, env_specs):
+    def make_reverb_tables(self, env_specs, networks):
         def from_specs(spec):
             tf_spec = lambda x: tf.TensorSpec((self._c.seq_len,) + tuple(x.shape), dtype=x.dtype)
             return jax.tree_util.tree_map(tf_spec, spec)
-        signature = Transitions(
-            observations=from_specs(env_specs.observation),
-            actions=from_specs(env_specs.action),
-            rewards=from_specs(env_specs.reward),
-            next_observations=from_specs(env_specs.observation)
+        trajectory_signature = dict(
+            observations=from_specs(env_specs.observation_spec),
+            actions=from_specs(env_specs.action_spec),
+            rewards=from_specs(env_specs.reward_spec),
+            next_observations=from_specs(env_specs.observation_spec)
+        )
+        weights_signature = jax.tree_util.tree_map(
+            lambda x: tf.TensorSpec(x.shape, x.dtype),
+            networks.init(jax.random.PRNGKey(0))
         )
         return [
             reverb.Table(
@@ -45,38 +50,44 @@ class Builder:
                     samples_per_insert=self._c.samples_per_insert,
                     error_buffer=self._c.samples_per_insert,
                 ),
-                signature=signature
+                signature=trajectory_signature
             ),
             reverb.Table(
                 name='weights',
                 sampler=reverb.selectors.Lifo(),
                 remover=reverb.selectors.Fifo(),
                 max_size=1,
-                rate_limiter=reverb.rate_limiters.MinSize(1)
+                rate_limiter=reverb.rate_limiters.MinSize(1),
+                signature=weights_signature
             )
         ]
 
     def make_dataset_iterator(self, server_address):
+        import pdb; pdb.set_trace()
         ds: tf.data.Dataset = reverb.TrajectoryDataset.from_table_signature(
             server_address=server_address,
             table='replay_buffer',
-            max_in_flight_samples_per_worker=2*self._c.batch_size,
+            max_in_flight_samples_per_worker=4*self._c.batch_size,
+            get_signature_timeout_secs=-1,
+            rate_limiter_timeout_ms=-1,
+            num_workers_per_iterator=-1,
+            max_samples=-1,
         )
-        ds = ds.batch(self._c.batch_size)
+        ds = ds.batch(self._c.batch_size, drop_remainder=True)
         ds = ds.prefetch(5)
         return ds.as_numpy_iterator()
 
     def make_networks(self, env_specs):
-        return make_networks(self._c, env_specs.observation, env_specs.action)
+        return make_networks(self._c,
+                             env_specs.observation_spec,
+                             env_specs.action_spec)
 
     def make_learner(self,
-                     key: jax.random.PRNGKey,
-                     dataset: tf.data.Dataset,
-                     networks: MPONetworks
+                     rng_key: jax.random.PRNGKey,
+                     iterator: tf.data.Dataset,
+                     networks: MPONetworks,
+                     client: reverb.Client
                      ):
-
-        key1, key2 = jax.random.split(key)
-
         optim = optax.multi_transform({
             'encoder': optax.adam(self._c.encoder_lr),
             'critic': optax.adam(self._c.critic_lr),
@@ -86,28 +97,13 @@ class Builder:
             ('encoder', 'critic', 'actor', 'dual_params')
         )
 
-        params = networks.init(key1)
-        optim_state = optim.init(params)
-        encoder_params, critic_params, actor_params, dual_params = params
-
-        state = MPOState(
-            actor_params=actor_params,
-            target_actor_params=actor_params,
-            critic_params=critic_params,
-            target_critic_params=critic_params,
-            encoder_params=encoder_params,
-            target_encoder_params=encoder_params,
-            optim_state=optim_state,
-            dual_params=dual_params,
-            key=key2
-        )
-
         return MPOLearner(
+            rng_key,
             self._c,
             networks,
             optim,
-            dataset,
-            state
+            iterator,
+            client
         )
 
     def make_actor(self, rng_key, env, networks, client):
@@ -122,9 +118,10 @@ class Builder:
                          task_kwargs={'random': self._c.seed},
                          environment_kwargs=None)
 
-        env_specs = EnvironmentSpecs(
-            observation=env.observation_spec(),
-            action=env.action_spec(),
-            reward=env.reward_spec(),
-        )
-        return StatesWrapper(env), env_specs
+        env = dmc_wrappers.StatesWrapper(env)
+        env = dmc_wrappers.TypesCast(env,
+                                     observation_dtype=np.float32,
+                                     action_dtype=np.float32,
+                                     reward_dtype=np.float32)
+
+        return env, env.environment_specs

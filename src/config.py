@@ -21,9 +21,9 @@ class MPOConfig:
     hidden_dim: int = 256
 
     # reverb
-    min_replay_size: int = 10000
-    samples_per_insert: int = 256
-    batch_size: int = 128
+    min_replay_size: int = 1000
+    samples_per_insert: int = 128
+    batch_size: int = 64
     buffer_capacity: int = int(1e6)
 
     # training
