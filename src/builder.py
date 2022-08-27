@@ -16,9 +16,9 @@ from .learner import MPOLearner
 
 
 class EnvironmentSpecs(NamedTuple):
-    observation: Any
-    action: Any
-    reward: Any
+    observation_spec: Any
+    action_spec: Any
+    reward_spec: Any
 
 
 class Builder:
@@ -45,11 +45,12 @@ class Builder:
                 sampler=reverb.selectors.Uniform(),
                 remover=reverb.selectors.Fifo(),
                 max_size=self._c.buffer_capacity,
-                rate_limiter=reverb.rate_limiters.SampleToInsertRatio(
-                    min_size_to_sample=self._c.min_replay_size,
-                    samples_per_insert=self._c.samples_per_insert,
-                    error_buffer=self._c.samples_per_insert,
-                ),
+                # rate_limiter=reverb.rate_limiters.SampleToInsertRatio(
+                #     min_size_to_sample=self._c.min_replay_size,
+                #     samples_per_insert=self._c.samples_per_insert,
+                #     error_buffer=self._c.samples_per_insert,
+                # ),
+                rate_limiter=reverb.rate_limiters.MinSize(100),
                 signature=trajectory_signature
             ),
             reverb.Table(
@@ -63,31 +64,29 @@ class Builder:
         ]
 
     def make_dataset_iterator(self, server_address):
-        import pdb; pdb.set_trace()
         ds: tf.data.Dataset = reverb.TrajectoryDataset.from_table_signature(
             server_address=server_address,
             table='replay_buffer',
             max_in_flight_samples_per_worker=4*self._c.batch_size,
-            get_signature_timeout_secs=-1,
-            rate_limiter_timeout_ms=-1,
-            num_workers_per_iterator=-1,
-            max_samples=-1,
+            get_signature_timeout_secs=10
         )
         ds = ds.batch(self._c.batch_size, drop_remainder=True)
         ds = ds.prefetch(5)
-        return ds.as_numpy_iterator()
+        return ds
 
-    def make_networks(self, env_specs):
+    def make_networks(self, env_specs: EnvironmentSpecs):
         return make_networks(self._c,
                              env_specs.observation_spec,
                              env_specs.action_spec)
 
     def make_learner(self,
                      rng_key: jax.random.PRNGKey,
+                     env_spec: EnvironmentSpecs,
                      iterator: tf.data.Dataset,
                      networks: MPONetworks,
                      client: reverb.Client
                      ):
+
         optim = optax.multi_transform({
             'encoder': optax.adam(self._c.encoder_lr),
             'critic': optax.adam(self._c.critic_lr),
@@ -100,6 +99,7 @@ class Builder:
         return MPOLearner(
             rng_key,
             self._c,
+            env_spec,
             networks,
             optim,
             iterator,

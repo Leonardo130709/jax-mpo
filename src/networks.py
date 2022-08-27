@@ -8,10 +8,7 @@ import tensorflow_probability.substrates.jax as tfp
 
 from src.config import MPOConfig
 from src.utils import TruncatedTanh
-
-
 tfd = tfp.distributions
-_MIN_STDDEV = 1e-5
 
 
 class Actor(hk.Module):
@@ -32,11 +29,11 @@ class Actor(hk.Module):
 
     def __call__(self, state):
         """Actor returns params instead of a distribution itself
-        since tfp.Distribution doesn't play nicely with jax.vmap."""
+        since tfd.Distribution doesn't play nicely with jax.vmap."""
         out = self._mlp(state)
         mean, stddev = jnp.split(out, 2, -1)
         mean = self.mean_scale * jnp.tanh(mean / self.mean_scale)
-        stddev = jax.nn.softplus(stddev) + _MIN_STDDEV
+        stddev = jax.nn.softplus(stddev) + 1e-5
         return mean, stddev
 
 
@@ -74,9 +71,8 @@ class DistributionalCritic(hk.Module):
 
 
 class MultimodalEncoder(hk.Module):
-    def __init__(self, config: MPOConfig):
+    def __init__(self):
         super().__init__(name="encoder")
-        self._c = config
 
     def __call__(self, observations):
         embeddings = jax.tree_util.tree_map(self.encode, observations)
@@ -104,9 +100,10 @@ class MPONetworks(NamedTuple):
     make_policy: Callable
     critic: Callable
     encoder: Callable
+    split_params: Callable
 
 
-def make_networks(config, observation_spec, action_spec):
+def make_networks(config: MPOConfig, observation_spec, action_spec):
     dummy_obs = jax.tree_util.tree_map(
         lambda t: jnp.zeros(t.shape), observation_spec)
     act_dim = action_spec.shape[0]
@@ -117,29 +114,31 @@ def make_networks(config, observation_spec, action_spec):
     hk.mixed_precision.set_policy(MultimodalEncoder, prec)
 
     @hk.without_apply_rng
-    @hk.transform
-    def encode_fn(observation):
-        return MultimodalEncoder(config)(observation)
-
-    @hk.without_apply_rng
-    @hk.transform
-    def policy_fn(state):
+    @hk.multi_transform
+    def _forward():
+        encoder = MultimodalEncoder()
         actor = Actor(
             act_dim,
             config.actor_layers,
             config.mean_scale,
             activation=jax.nn.relu
         )
-        return actor(state)
-
-    @hk.without_apply_rng
-    @hk.transform
-    def critic_fn(state, action, quantile):
         critic = DistributionalCritic(
             config.critic_layers,
             config.quantile_embedding_dim
         )
-        return critic(state, action, quantile)
+
+        def init():
+            state = encoder(dummy_obs)
+            policy_params = actor(state)
+            dist = make_policy(*policy_params)
+            key = hk.next_rng_key()
+            action = dist.sample(seed=key)
+            tau = jnp.ones(1)
+            value = critic(state, action, tau)
+            return state, action, value
+
+        return init, (encoder, actor, critic)
 
     def make_policy(mean, stddev):
         return tfd.TransformedDistribution(
@@ -147,22 +146,24 @@ def make_networks(config, observation_spec, action_spec):
             TruncatedTanh()
         )
 
-    def init(key):
-        k1, k2, k3, k4 = jax.random.split(key, 4)
-        encoder_params = encode_fn.init(k1, dummy_obs)
-        state = encode_fn.apply(encoder_params, dummy_obs)
-        actor_params = policy_fn.init(k2, state)
-        action, _ = policy_fn.apply(actor_params, state)
-        tau = jnp.array([1.])
-        critic_params = critic_fn.init(k3, state, action, tau)
-        dual_params = (jnp.zeros(()), jnp.zeros(act_dim), jnp.zeros(act_dim))
-        return encoder_params, critic_params, actor_params, dual_params
+    def split_params(params):
+        param_groups = ('encoder', 'actor', 'critic')
 
+        def split_fn(module, name, value):
+            for n, group in enumerate(param_groups):
+                if group in module:
+                    return n
+            return -1
+
+        return hk.data_structures.partition_n(split_fn, params, len(param_groups))
+
+    encoder_fn, actor_fn, critic_fn = _forward.apply
     return MPONetworks(
-        init=init,
-        actor=policy_fn.apply,
+        init=_forward.init,
+        actor=actor_fn,
+        critic=critic_fn,
+        encoder=encoder_fn,
         make_policy=make_policy,
-        critic=critic_fn.apply,
-        encoder=encode_fn.apply,
+        split_params=split_params
     )
 

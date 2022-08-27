@@ -8,8 +8,7 @@ class MPOConfig:
     num_actions: int = 20
     num_quantiles: int = 4
     epsilon_eta: float = .1
-    epsilon_alpha_mean: float = .1
-    epsilon_alpha_stddev: float = 1e-4
+    epsilon_alpha: float = 1e-3
     init_duals: float = .01
     huber_kappa: float = 1.
 
@@ -21,13 +20,13 @@ class MPOConfig:
     hidden_dim: int = 256
 
     # reverb
-    min_replay_size: int = 1000
+    min_replay_size: int = 10000
     samples_per_insert: int = 128
     batch_size: int = 64
     buffer_capacity: int = int(1e6)
 
     # training
-    seq_len: int = 50
+    seq_len: int = 1
     actor_lr: float = 5e-4
     critic_lr: float = 5e-4
     encoder_lr: float = 5e-4
@@ -40,4 +39,5 @@ class MPOConfig:
     # task
     seed: int = 0
     task: str = 'cartpole_balance'
+    total_episodes: int = -1
     mp_policy: str = 'p=f32,c=f32,o=f32'

@@ -1,6 +1,8 @@
 from typing import NamedTuple, Any
 import functools
+import itertools
 
+import chex
 import jax
 import jax.numpy as jnp
 import haiku as hk
@@ -30,9 +32,10 @@ class Actor:
                  client: reverb.Client):
 
         @functools.partial(jax.jit, backend='cpu', static_argnums=(3,))
+        @chex.assert_max_traces(n=2)
         def _act(params, key, observation, training):
-            state = networks.encoder(params[0], observation)
-            policy_params = networks.actor(params[2], state)
+            state = networks.encoder(params, observation)
+            policy_params = networks.actor(params, state)
             dist = networks.make_policy(*policy_params)
             if training:
                 action = dist.sample(seed=key)
@@ -50,7 +53,8 @@ class Actor:
         self._weights_ds = reverb.TimestepDataset.from_table_signature(
             client.server_address,
             table='weights',
-            max_in_flight_samples_per_worker=1
+            max_in_flight_samples_per_worker=1,
+            num_workers_per_iterator=1,
         ).as_numpy_iterator()
 
     def simulate(self, env, training):
@@ -69,7 +73,8 @@ class Actor:
                         observations=observation,
                         actions=action,
                         rewards=timestep.reward,
-                        next_observations=timestep.observation)
+                        next_observations=timestep.observation
+                    )
                 )
                 step += 1
 
@@ -94,8 +99,13 @@ class Actor:
         return jax.tree_util.tree_map(lambda x: jax.device_put(x, CPU), params)
 
     def interact(self):
-        while True:
+        if self.config.total_episodes > 0:
+            episodes = range(self.config.total_episodes)
+        else:
+            episodes = itertools.count()
+
+        for _ in episodes:
             self._params = self.get_params()
             steps = self.simulate(self._env, training=True)
             self.num_interactions += steps
-            print(self.num_interactions)
+            print(f'Actor interactions:{self.num_interactions}')
