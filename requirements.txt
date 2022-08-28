@@ -9,3 +9,4 @@ tensorflow
 tensorflow_probability
 dm_control
 dm-reverb
+git@github.com:Leonardo130709/rltools.git@dev

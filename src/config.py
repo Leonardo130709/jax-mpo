@@ -1,14 +1,16 @@
 import dataclasses
+from rltools import Config
 
 
 @dataclasses.dataclass
-class MPOConfig:
+class MPOConfig(Config):
     # alg
     discount: float = .99
+    action_repeat: int = 1
     num_actions: int = 20
     num_quantiles: int = 4
     epsilon_eta: float = .1
-    epsilon_alpha: float = 1e-3
+    epsilon_alpha: float = 1e-2
     init_duals: float = .01
     huber_kappa: float = 1.
 
@@ -21,8 +23,8 @@ class MPOConfig:
 
     # reverb
     min_replay_size: int = 10000
-    samples_per_insert: int = 128
-    batch_size: int = 64
+    samples_per_insert: int = 32
+    batch_size: int = 256
     buffer_capacity: int = int(1e6)
 
     # training

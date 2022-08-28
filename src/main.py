@@ -1,12 +1,11 @@
 import multiprocessing
-import time
 
 import jax
 import reverb
 
 from src.builder import Builder
 from src.config import MPOConfig
-jax.config.update('jax_disable_jit', True)
+jax.config.update('jax_disable_jit', False)
 
 
 def run_actor(config, server_address):
@@ -16,7 +15,7 @@ def run_actor(config, server_address):
     env, env_specs = builder.make_env()
     networks = builder.make_networks(env_specs)
     actor = builder.make_actor(key, env, networks, client)
-    actor.interact()
+    actor.run()
 
 
 def run_learner(config, server_address):
@@ -27,7 +26,7 @@ def run_learner(config, server_address):
     networks = builder.make_networks(env_specs)
     ds = builder.make_dataset_iterator(server_address)
     learner = builder.make_learner(key, env_specs, ds, networks, client)
-    learner.learn()
+    learner.run()
 
 
 def main():
@@ -51,8 +50,8 @@ def main():
     )
     learner_process.start()
     actor_process.start()
-    # learner_process.join()
-    server.wait()
+    actor_process.join()
+    learner_process.join()
 
 
 if __name__ == "__main__":

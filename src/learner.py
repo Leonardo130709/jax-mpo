@@ -5,11 +5,13 @@ import jax
 import jax.scipy
 import jax.numpy as jnp
 import haiku as hk
+import numpy as np
 import optax
 import chex
 import reverb
 import tensorflow_probability.substrates.jax as tfp
 
+from rltools.loggers import TFSummaryLogger, JSONLogger
 from src.networks import MPONetworks
 from src.config import MPOConfig
 tfd = tfp.distributions
@@ -30,14 +32,15 @@ class MPOLearner:
             config: MPOConfig,
             env_spec: 'EnvironmentSpec',
             networks: MPONetworks,
-            optim: optax.GradientTransformation,
             train_dataset: 'Dataset',
             client: reverb.Client
     ):
 
         key, subkey = jax.random.split(rng_key)
-        self._data_iterator = train_dataset.as_numpy_iterator()
+        self._data_iterator = train_dataset
         self._client = client
+        self._logger1 = TFSummaryLogger(logdir='tut', label='train', step_key='step')
+        self._logger2 = JSONLogger('metrics.jsonl')
         self.learning_steps = 0
 
         params = networks.init(subkey)
@@ -48,6 +51,16 @@ class MPOLearner:
             init_duals,
             jnp.full((env_spec.action_spec.shape[0]), init_duals)
         )
+
+        optim = optax.multi_transform({
+            'encoder': optax.adam(config.encoder_lr),
+            'critic': optax.adam(config.critic_lr),
+            'actor': optax.adam(config.actor_lr),
+            'dual_params': optax.adam(config.dual_lr),
+        },
+            ('encoder', 'critic', 'actor', 'dual_params')
+        )
+        
         optim_state = optim.init((
             encoder_params,
             critic_params,
@@ -132,16 +145,16 @@ class MPOLearner:
             )
             return jnp.mean(policy_loss + dual_loss), metrics
 
-        @chex.assert_max_traces(n=1)
+        @chex.assert_max_traces(n=3)
         def step(mpostate, data):
             params, target_params, dual_params, \
                 optim_state, rng_key = mpostate
 
             rng_key, subkey1, subkey2, subkey3 = jax.random.split(rng_key, 4)
 
-            def _reshape(key):
-                arr = data.get(key)
-                return jnp.reshape(arr, (-1,) + tuple(arr.shape[2:]))
+            def _reshape(data_key):
+                val = data.get(data_key)
+                return jnp.reshape(val, (-1,) + tuple(val.shape[2:]))
 
             observations, actions, rewards, next_observations = map(
                 _reshape,
@@ -159,6 +172,10 @@ class MPOLearner:
 
 
             sampled_actions = target_policy.sample(config.num_actions, seed=subkey1)
+
+            log_probs = jnp.sum(target_policy.log_prob(sampled_actions), axis=-1)
+            entropy = -jnp.mean(log_probs)
+
             next_taus = jax.random.uniform(
                 subkey2,
                 shape=tuple(sampled_actions.shape[:-1]) + (config.num_quantiles, 1), # batch consistence?
@@ -175,7 +192,6 @@ class MPOLearner:
             target_z_values = networks.critic(target_critic_params, repeated_next_states, sampled_actions, next_taus)
             q_values = jnp.mean(target_z_values, axis=-1)
             target_z_values = jnp.mean(rewards + config.discount * target_z_values, axis=0)
-            target_z_values = jax.lax.stop_gradient(target_z_values)
 
             taus = jax.random.uniform(
                 subkey3,
@@ -212,6 +228,8 @@ class MPOLearner:
             metrics.update(
                 reward=jnp.mean(rewards),
                 critic_loss=critic_loss,
+                entropy=entropy,
+                mean_value=jnp.mean(q_values),
             )
 
             return MPOState(
@@ -224,7 +242,7 @@ class MPOLearner:
 
         self._step = jax.jit(step)
 
-    def learn(self):
+    def run(self):
         while True:
             data = next(self._data_iterator)
             info, data = data
@@ -232,8 +250,10 @@ class MPOLearner:
             self.learning_steps += 1
             self._state, metrics = self._step(self._state, data)
             self._client.insert(self._state.params, {'weights': 1.})
-            if self.learning_steps % 10 == 0:
-                print(self.learning_steps, metrics)
+            metrics.update(step=self.learning_steps)
+            self._logger1.write(metrics)
+            metrics = jax.tree_util.tree_map(float, metrics)
+            self._logger2.write(metrics)
 
     @functools.partial(jax.jit, static_argnums=0)
     @chex.assert_max_traces(n=1)

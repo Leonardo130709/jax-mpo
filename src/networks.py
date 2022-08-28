@@ -15,7 +15,7 @@ class Actor(hk.Module):
     def __init__(self,
                  act_dim: int,
                  layers: Iterable[int],
-                 mean_scale: int,
+                 mean_scale: float,
                  activation: Callable,
                  ):
         super().__init__(name="actor")

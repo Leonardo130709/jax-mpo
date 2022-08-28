@@ -57,10 +57,10 @@ class Actor:
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
 
-    def simulate(self, env, training):
-        step = 0
+    def simulate(self, env, training): # todo: move to EnvironmentLoop
+        steps = 0
         seq_len = self.config.seq_len
-        self._rng_seq.reserve(1000) # // self.config.action_repeat)
+        self._rng_seq.reserve(1000 // self.config.action_repeat)
         nested_slice = lambda x: jax.tree_util.tree_map(lambda t: t[-seq_len:], x)
         timestep = env.reset()
         with self._client.trajectory_writer(seq_len) as writer:
@@ -76,18 +76,29 @@ class Actor:
                         next_observations=timestep.observation
                     )
                 )
-                step += 1
+                steps += 1
 
-                if step >= seq_len:
+                if training and steps >= seq_len:
                     writer.create_item(
                         table='replay_buffer',
                         priority=1.,
                         trajectory=nested_slice(writer.history)
                     )
-                    writer.flush()
+                    writer.flush(block_until_num_items=4)
             writer.end_episode()
 
-        return step
+        return steps
+
+    def eval(self):
+        self._rng_seq.reserve(1000 // self.config.action_repeat)
+        timestep = self._env.reset()
+        total_reward = 0
+        while not timestep.last():
+            action = self.act(timestep.observation, training=False)
+            timestep = self._env.step(action)
+            total_reward += timestep.reward
+
+        return total_reward
 
     def act(self, observation, training):
         rng = next(self._rng_seq)
@@ -98,14 +109,17 @@ class Actor:
         params = next(self._weights_ds).data
         return jax.tree_util.tree_map(lambda x: jax.device_put(x, CPU), params)
 
-    def interact(self):
+    def run(self):
         if self.config.total_episodes > 0:
             episodes = range(self.config.total_episodes)
         else:
             episodes = itertools.count()
 
-        for _ in episodes:
+        for ep in episodes:
             self._params = self.get_params()
             steps = self.simulate(self._env, training=True)
-            self.num_interactions += steps
-            print(f'Actor interactions:{self.num_interactions}')
+            self.num_interactions += steps * self.config.action_repeat
+            if ep % 10 == 0:
+                print(f'Return after {self.num_interactions} '
+                      f'interactions: {self.eval()}')
+
