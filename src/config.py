@@ -1,45 +1,55 @@
 import dataclasses
-from rltools import Config
+from rltools.config import Config
 
 
 @dataclasses.dataclass
 class MPOConfig(Config):
-    # alg
+    # Algorithm
     discount: float = .99
     action_repeat: int = 1
+    n_step: int = 1
     num_actions: int = 20
-    num_quantiles: int = 4
+    num_critic_quantiles: int = 8
+    num_actor_quantiles: int = 32
     epsilon_eta: float = .1
-    epsilon_alpha: float = 1e-2
-    init_duals: float = .01
+    epsilon_mean: float = 2.5e-3
+    epsilon_stddev: float = 1e-6
+    init_duals: float = 10.
     huber_kappa: float = 1.
 
-    # model
-    actor_layers: tuple = (200, 200)
-    mean_scale: float = 1.
-    critic_layers: tuple = (256, 256)
+    # Model
+    activation: str = 'relu'
+    normalization: str = 'none'
+    stop_actor_grad: bool = True
+    #   Encoder
+    cnn_keys: str = r'.*'
+    mlp_keys: str = r'.*'
+    cnn_kernels: tuple = (48, 48, 48, 48)
+    cnn_depth: int = 48
+    mlp_layers: tuple = (256, 256, 256, 256)
+    feature_fusion: bool = False
+    #   Actor
+    actor_layers: tuple = (256, 256)
+    min_std: float = .1
+    #   Critic
+    critic_layers: tuple = (512, 512)
     quantile_embedding_dim: int = 64
-    hidden_dim: int = 256
 
     # reverb
-    min_replay_size: int = 10000
-    samples_per_insert: int = 32
+    min_replay_size: int = 1e4
+    samples_per_insert: int = 64
     batch_size: int = 256
-    buffer_capacity: int = int(1e6)
+    buffer_capacity: int = int(1e7)
 
     # training
-    seq_len: int = 1
-    actor_lr: float = 5e-4
-    critic_lr: float = 5e-4
-    encoder_lr: float = 5e-4
+    learning_rate: float = 1e-4
     dual_lr: float = 1e-2
-    actor_polyak: float = 5e-3
-    critic_polyak: float = 5e-3
-    encoder_polyak: float = 5e-3
-    max_grad: float = 10.
+    target_update_period: int = 100
+    grad_norm: float = 40.
 
     # task
     seed: int = 0
     task: str = 'cartpole_balance'
-    total_episodes: int = -1
+    time_limit: int = float('inf')
+    total_steps: int = 1e6
     mp_policy: str = 'p=f32,c=f32,o=f32'

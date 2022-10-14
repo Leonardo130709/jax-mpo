@@ -22,6 +22,7 @@ class MPOState(NamedTuple):
     target_params: Any
     dual_params: Any
     optim_state: Any
+    dual_optim_state: Any
     rng_key: jax.random.PRNGKey
 
 
