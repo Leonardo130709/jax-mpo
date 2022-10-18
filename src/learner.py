@@ -1,11 +1,10 @@
-from typing import NamedTuple, Any
+from typing import NamedTuple
 import functools
 
 import jax
 import jax.scipy
 import jax.numpy as jnp
 import haiku as hk
-import numpy as np
 import optax
 import chex
 import reverb
@@ -14,23 +13,34 @@ import tensorflow_probability.substrates.jax as tfp
 from rltools.loggers import TFSummaryLogger, JSONLogger
 from src.networks import MPONetworks
 from src.config import MPOConfig
+from src.utils import ops
+
 tfd = tfp.distributions
+Array = jnp.ndarray
+
+
+class Duals(NamedTuple):
+    temperature: Array
+    alpha_mean: Array
+    alpha_std: Array
 
 
 class MPOState(NamedTuple):
-    params: Any
-    target_params: Any
-    dual_params: Any
-    optim_state: Any
-    dual_optim_state: Any
+    # __slots__
+    params: hk.Params
+    target_params: hk.Params
+    dual_params: Duals
+    optim_state: optax.OptState
+    dual_optim_state: optax.OptState
     rng_key: jax.random.PRNGKey
+    step: int
 
 
 class MPOLearner:
     def __init__(
             self,
             rng_key: jax.random.PRNGKey,
-            config: MPOConfig,
+            cfg: MPOConfig,
             env_spec: 'EnvironmentSpec',
             networks: MPONetworks,
             train_dataset: 'Dataset',
@@ -42,218 +52,219 @@ class MPOLearner:
         self._client = client
         self._logger1 = TFSummaryLogger(logdir='tut', label='train', step_key='step')
         self._logger2 = JSONLogger('metrics.jsonl')
-        self.learning_steps = 0
 
         params = networks.init(subkey)
-        encoder_params, actor_params, critic_params = networks.split_params(params)
+        init_duals = jnp.log(jnp.exp(cfg.init_duals) - 1.)
+        act_dim = env_spec.action_spec.shape[0]
+        dual_params = Duals(init_duals,
+                            jnp.full(act_dim, init_duals),
+                            jnp.full(act_dim, init_duals)
+                            )
 
-        init_duals = jnp.log(jnp.exp(config.init_duals) - 1)
-        dual_params = (
-            init_duals,
-            jnp.full((env_spec.action_spec.shape[0]), init_duals)
+        adam = functools.partial(optax.adam,
+                                 b1=cfg.adam_b1,
+                                 b2=cfg.adam_b2,
+                                 eps=cfg.adam_eps
+                                 )
+        optim = optax.chain(
+            optax.clip_by_global_norm(cfg.grad_norm),
+            adam(cfg.learning_rate)
         )
-
-        optim = optax.multi_transform({
-            'encoder': optax.adam(config.encoder_lr),
-            'critic': optax.adam(config.critic_lr),
-            'actor': optax.adam(config.actor_lr),
-            'dual_params': optax.adam(config.dual_lr),
-        },
-            ('encoder', 'critic', 'actor', 'dual_params')
-        )
-        
-        optim_state = optim.init((
-            encoder_params,
-            critic_params,
-            actor_params,
-            dual_params))
-        self._client.insert(params, {'weights': 1.})
-
+        dual_optim = adam(cfg.dual_lr)
+        optim_state = optim.init(params)
+        dual_optim_state = dual_optim.init(dual_params)
         self._state = MPOState(
             params=params,
-            target_params=hk.data_structures.to_haiku_dict(params),
+            target_params=params.copy(),
             dual_params=dual_params,
             optim_state=optim_state,
-            rng_key=key
+            dual_optim_state=dual_optim_state,
+            rng_key=key,
+            step=0
         )
 
-        def scaled_and_dual_loss(dual_params, loss, epsilon):
-            scaled_loss = jax.lax.stop_gradient(dual_params) * loss
-            loss = dual_params * jax.lax.stop_gradient(loss - epsilon)
-            return jnp.sum(scaled_loss, axis=-1), jnp.sum(loss, axis=-1)
-
-        def z_learning(critic_params, encoder_params,
-                       observation, action, taus, target_z_values):
-            state = networks.encoder(encoder_params, observation)
-            chex.assert_equal_rank([state, action])
-            z_values = networks.critic(critic_params, state, action, taus)
-            chex.assert_equal_shape([z_values, target_z_values])
-
-            # Pairwise difference
-            target_z_values = jnp.expand_dims(target_z_values, axis=-2)
-            z_values = jnp.expand_dims(z_values, axis=-1)
-            deltas = target_z_values - z_values
-
-            ind = jnp.where(
-                deltas < 0,
-                jnp.ones_like(deltas),
-                jnp.zeros_like(deltas)
+        def mpo_loss(params,
+                     dual_params,
+                     target_params,
+                     rng,
+                     o_tm1, a_tm1, r_t, discount_t, o_t
+                     ):
+            chex.assert_type([o_tm1, a_tm1, r_t, discount_t, o_t], float)
+            chex.assert_rank(
+                [o_tm1.values(), a_tm1, r_t, discount_t, o_t.values()],
+                [{1, 2, 3}, 1, 0, 0, {1, 2, 3}]
             )
-            weight = jnp.abs(taus - ind)
-            loss = optax.huber_loss(deltas, delta=config.huber_kappa)
-            loss = weight * loss
-            return jnp.mean(loss) / config.huber_kappa, state
+            sg = jax.lax.stop_gradient
+            metrics = dict()
 
-        def cross_entropy_loss(policy, actions, normalized_weights):
-            log_probs = policy.log_prob(actions)
-            log_probs = jnp.sum(log_probs, axis=-1)
-            chex.assert_equal_shape([log_probs, normalized_weights])
-            cross_entropy = jnp.sum(log_probs * normalized_weights, axis=0)
-            return - cross_entropy
-
-        def weight_and_temperature_loss(temperature, q_values):
-            chex.assert_rank(temperature, 0)
-            tempered_q_values = q_values / temperature
-            normalized_weights = jax.nn.softmax(tempered_q_values, axis=0)
-
-            log_num_actions = jnp.log(config.num_actions)
-            q_logsumexp = jax.scipy.special.logsumexp(tempered_q_values, axis=0)
-            temperature_loss = config.epsilon_eta + q_logsumexp - log_num_actions
-            temperature_loss = temperature_loss * temperature
-            return temperature_loss, normalized_weights
-
-        def policy_improvement(actor_params, dual_params, target_policy, states, actions, q_values):
-            # todo: test with gaussian penalized policy
-            policy_params = networks.actor(actor_params, states)
-            online_policy = networks.make_policy(*policy_params)
-
-            temperature, alpha = map(jax.nn.softplus, dual_params)
-
-            temperature_loss, normalized_weights = weight_and_temperature_loss(temperature, q_values)
-            ce_loss = cross_entropy_loss(online_policy, actions, normalized_weights)
-            kl_loss = tfd.kl_divergence(target_policy, online_policy)
-            scaled_kl_loss, alpha_loss = scaled_and_dual_loss(alpha, kl_loss, config.epsilon_alpha)
-
-            chex.assert_equal_shape([temperature_loss, alpha_loss, ce_loss, scaled_kl_loss])
-            policy_loss = ce_loss + scaled_kl_loss
-            dual_loss = temperature_loss + alpha_loss
-
-            metrics = dict(
-                kl_loss=jnp.mean(jnp.sum(kl_loss, axis=-1)),
-                ce_loss=jnp.mean(ce_loss),
-                temperature=temperature,
-                alpha_mean=jnp.mean(alpha),
+            k1, k2, k3 = jax.random.split(rng, 3)
+            tau_tm1 = jax.random.uniform(
+                k1,
+                cfg.num_quantiles,
+                dtype=a_tm1.dtype
             )
-            return jnp.mean(policy_loss + dual_loss), metrics
-
-        @chex.assert_max_traces(n=3)
-        def step(mpostate, data):
-            params, target_params, dual_params, \
-                optim_state, rng_key = mpostate
-
-            rng_key, subkey1, subkey2, subkey3 = jax.random.split(rng_key, 4)
-
-            def _reshape(data_key):
-                val = data.get(data_key)
-                return jnp.reshape(val, (-1,) + tuple(val.shape[2:]))
-
-            observations, actions, rewards, next_observations = map(
-                _reshape,
-                ('observations', 'actions', 'rewards', 'next_observations')
+            tau_t = jax.random.uniform(
+                k2,
+                (cfg.num_actions, cfg.num_quantiles),
+                dtype=a_tm1.dtype
             )
-            (encoder_params, actor_params, critic_params),\
-                (target_encoder_params, target_actor_params,
-                 target_critic_params) =\
-                map(networks.split_params, (params, target_params))
-            
-            next_states = networks.encoder(encoder_params, next_observations)
-            target_next_states = networks.encoder(target_encoder_params, next_observations)
-            target_policy_params = networks.actor(target_actor_params, target_next_states)
-            target_policy = networks.make_policy(*target_policy_params)
 
+            s_tm1 = networks.encoder(params, o_tm1)
+            s_t = networks.encoder(params, o_t)
+            target_s_t = networks.encoder(target_params, o_t)
+            # Target stale state can be used if actor is detached.
+            s_t = jax.lax.switch(cfg.stop_actor_grad, sg(s_t), s_t)
 
-            sampled_actions = target_policy.sample(config.num_actions, seed=subkey1)
+            target_params = networks.actor(target_params, target_s_t)
+            target_dist = networks.make_policy(*target_params)
+            a_t = target_dist.sample(seed=k3, sample_shape=cfg.num_actions)
 
-            log_probs = jnp.sum(target_policy.log_prob(sampled_actions), axis=-1)
-            entropy = -jnp.mean(log_probs)
+            target_s_t = jnp.repeat(
+                target_s_t[jnp.newaxis], cfg.num_actions, axis=0)
+            z_t = networks.critic(target_params, target_s_t, a_t, tau_t)
+            z_tm1 = networks.critic(params, s_tm1, a_tm1, tau_tm1)
+            v_t = jnp.mean(z_t, axis=0)
+            q_t = jnp.mean(z_t, axis=1)
+            target_z_tm1 = sg(r_t + discount_t * v_t)
 
-            next_taus = jax.random.uniform(
-                subkey2,
-                shape=tuple(sampled_actions.shape[:-1]) + (config.num_quantiles, 1), # batch consistence?
-                dtype=next_observations.dtype
-            )
-            repeated_next_states = jnp.repeat(
-                jnp.expand_dims(target_next_states, axis=0),
-                config.num_actions,
-                axis=0
-            )
-            rewards = jnp.reshape(rewards, (1,) + tuple(rewards.shape) + (1,))
+            critic_loss = ops.quantile_regression_loss(
+                z_tm1, tau_tm1, target_z_tm1, cfg.hubber_delta)
 
-            chex.assert_rank([repeated_next_states, sampled_actions, next_taus, rewards], [3, 3, 4, 3])
-            target_z_values = networks.critic(target_critic_params, repeated_next_states, sampled_actions, next_taus)
-            q_values = jnp.mean(target_z_values, axis=-1)
-            target_z_values = jnp.mean(rewards + config.discount * target_z_values, axis=0)
+            temperature, alpha_mean, alpha_std =\
+                jax.tree_util.tree_map(ops.softplus, dual_params)
+            temperature_loss, normalized_weights =\
+                ops.temperature_loss_and_normalized_weights(
+                    temperature,
+                    q_t,
+                    cfg.epsilon_eta
+                )
 
-            taus = jax.random.uniform(
-                subkey3,
-                shape=tuple(actions.shape[:-1]) + (config.num_quantiles, 1),
-                dtype=actions.dtype)
+            mean, std = networks.actor(params, s_t)
+            fixed_mean, fixed_std = map(sg, (mean, std))
+            fixed_mean = networks.make_policy(fixed_mean, std)
+            fixed_std = networks.make_policy(mean, fixed_std)
 
-            critic_and_encoder_loss = jax.value_and_grad(z_learning, argnums=(0, 1), has_aux=True)
-            actor_and_dual_loss = jax.grad(policy_improvement, argnums=(0, 1), has_aux=True)
+            def policy_loss(online_dist,
+                            duals,
+                            epsilon,
+                            prefix
+                            ):
+                ce_loss = ops.cross_entropy_loss(
+                    online_dist, a_t, normalized_weights)
+                kl_loss = tfd.kl_divergence(
+                    target_dist.distribution,
+                    online_dist.distribution
+                )
+                scaled_kl_loss, dual_loss = ops.scaled_and_dual_loss(
+                    kl_loss, duals, epsilon, per_dimension=True)
+                loss = ce_loss + scaled_kl_loss + dual_loss
+                pfx = lambda s: f'{prefix}_{s}'
+                met = {
+                    pfx('ce_loss'): ce_loss,
+                    pfx('kl'): jnp.sum(kl_loss),
+                    pfx('dual_loss'): dual_loss
+                }
+                return .5 * loss, met
 
-            (critic_loss, states), (critic_grads, encoder_grads) = critic_and_encoder_loss(
-                critic_params, encoder_params, observations, actions, taus, target_z_values)
-
-            (actor_grads, dual_grads), metrics = actor_and_dual_loss(
-                actor_params, dual_params, target_policy, next_states, sampled_actions, q_values)
-
-            updates, optim_state = optim.update((encoder_grads, critic_grads, actor_grads, dual_grads), optim_state)
-            (encoder_params, critic_params, actor_params, dual_params) = optax.apply_updates(updates, (encoder_params, critic_params, actor_params, dual_params))
-
-            target_encoder_params = optax.incremental_update(encoder_params, target_encoder_params, config.encoder_polyak)
-            target_critic_params = optax.incremental_update(critic_params, target_critic_params, config.critic_polyak)
-            target_actor_params = optax.incremental_update(actor_params, target_actor_params, config.actor_polyak)
-
-            params = hk.data_structures.merge(encoder_params,
-                                              actor_params,
-                                              critic_params,
-                                              check_duplicates=True
-                                              )
-            target_params = hk.data_structures.merge(target_encoder_params,
-                                                     target_actor_params,
-                                                     target_critic_params,
-                                                     check_duplicates=True
-                                                     )
+            mean_loss, metrics_mean = policy_loss(
+                fixed_std, alpha_mean, cfg.epsilon_mean, prefix='mean')
+            std_loss, metrics_std = policy_loss(
+                fixed_mean, alpha_std, cfg.epsilon_std, prefix='std')
+            total_loss = critic_loss + mean_loss + std_loss + temperature_loss
 
             metrics.update(
-                reward=jnp.mean(rewards),
                 critic_loss=critic_loss,
-                entropy=entropy,
-                mean_value=jnp.mean(q_values),
+                mean_value=jnp.mean(v_t),
+                entropy=fixed_mean.entropy(),
+                temperature=temperature,
+                alpha_mean=jnp.mean(alpha_mean),
+                alpha_std=jnp.mean(alpha_std),
+                temperature_loss=temperature_loss,
+                total_loss=total_loss,
+                mean_reward=r_t,
+                terminal_fraction=discount_t
+            )
+            metrics.update(metrics_mean)
+            metrics.update(metrics_std)
+
+            return total_loss, metrics
+
+        @chex.assert_max_traces(n=2)
+        def _step(mpostate: MPOState, data):
+            params = mpostate.params
+            target_params = mpostate.target_params
+            dual_params = mpostate.dual_params
+            optim_state = mpostate.optim_state
+            dual_optim_state = mpostate.dual_optim_state
+            rng_key = mpostate.rng_key
+            step = mpostate.step
+
+            observations, actions, rewards, discounts, next_observations =\
+                map(
+                    data.get,
+                    ('observations',
+                     'actions',
+                     'rewards',
+                     'discounts',
+                     'next_observations')
+                )
+            chex.assert_equal_shape_suffix(
+                [actions, observations], cfg.batch_size)
+            discounts *= cfg.discount ** cfg.n_step
+            keys = jax.random.split(rng_key, num=cfg.batch_size+1)
+            rng_key, subkeys = keys[0], keys[0:]
+            in_axes = 3 * (None,) + 6 * (0,)
+            loss_fn = jax.vmap(mpo_loss, in_axes=in_axes)
+            grad_fn = jax.grad(loss_fn, argnums=2, has_aux=True)
+
+            (params_grads, dual_grads), metrics = grad_fn(
+                params,
+                dual_params,
+                target_params,
+                subkeys,
+                observations,
+                actions,
+                rewards,
+                discounts,
+                next_observations
+            )
+            params_grads, dual_grads, metrics = jax.tree_util.tree_map(
+                lambda t: jnp.mean(t, axis=0),
+                (params_grads, dual_grads, metrics)
             )
 
-            return MPOState(
-                params=params,
-                target_params=target_params,
-                dual_params=dual_params,
-                optim_state=optim_state,
-                rng_key=rng_key
-            ), metrics
+            params_update, optim_state = optim.update(
+                params_grads, optim_state)
+            dual_update, dual_optim_state = dual_optim.update(
+                dual_grads, dual_optim_state)
+            params = optax.apply_updates(params, params_update)
+            dual_params = optax.apply_updates(dual_params, dual_update)
 
-        self._step = jax.jit(step)
+            target_params = optax.periodic_update(
+                params, target_params, step, cfg.target_update_period)
+
+            return MPOState(params=params,
+                            target_params=target_params,
+                            dual_params=dual_params,
+                            optim_state=optim_state,
+                            dual_optim_state=dual_optim_state,
+                            rng_key=rng_key,
+                            step=step+1
+                            ),  metrics
+
+        self._step = _step
 
     def run(self):
         while True:
             data = next(self._data_iterator)
             info, data = data
             data = self._preprocess(data)
-            self.learning_steps += 1
             self._state, metrics = self._step(self._state, data)
             self._client.insert(self._state.params, {'weights': 1.})
-            metrics.update(step=self.learning_steps)
-            self._logger1.write(metrics)
+
             metrics = jax.tree_util.tree_map(float, metrics)
+            metrics.update(step=self._state.step)
+            self._logger1.write(metrics)
             self._logger2.write(metrics)
 
     @functools.partial(jax.jit, static_argnums=0)

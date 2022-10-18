@@ -9,13 +9,12 @@ class MPOConfig(Config):
     action_repeat: int = 1
     n_step: int = 1
     num_actions: int = 20
-    num_critic_quantiles: int = 8
-    num_actor_quantiles: int = 32
+    num_quantiles: int = 8
     epsilon_eta: float = .1
     epsilon_mean: float = 2.5e-3
-    epsilon_stddev: float = 1e-6
+    epsilon_std: float = 1e-6
     init_duals: float = 10.
-    huber_kappa: float = 1.
+    hubber_delta: float = 1.
 
     # Model
     activation: str = 'relu'
@@ -44,12 +43,16 @@ class MPOConfig(Config):
     # training
     learning_rate: float = 1e-4
     dual_lr: float = 1e-2
+    adam_b1: float = .9
+    adam_b2: float = .999
+    adam_eps: float = 1e-6
     target_update_period: int = 100
     grad_norm: float = 40.
+    mp_policy: str = 'p=f32,c=f32,o=f32'
 
     # task
     seed: int = 0
     task: str = 'cartpole_balance'
-    time_limit: int = float('inf')
+    logdir: str = 'logdir'
+    time_limit: int = float('inf')  # :)
     total_steps: int = 1e6
-    mp_policy: str = 'p=f32,c=f32,o=f32'

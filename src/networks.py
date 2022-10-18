@@ -1,4 +1,4 @@
-from typing import NamedTuple, Callable, Iterable
+from typing import NamedTuple, Callable, Iterable, Dict
 import re
 
 import jax
@@ -58,7 +58,7 @@ class MLP(hk.Module):
 
         for i, output_size in enumerate(output_sizes):
             layers.append(hk.Linear(output_size))
-            if i < num_layers - 1 or activate_final:
+            if i < (num_layers - 1) or activate_final:
                 layers.append(NormLayer(norm))
                 layers.append(get_act(act))
 
@@ -85,10 +85,10 @@ class Actor(hk.Module):
         """Actor returns params instead of a distribution itself
         since tfd.Distribution doesn't play nicely with jax.vmap."""
         out = self._net(state)
-        mean, stddev = jnp.split(out, 2, -1)
+        mean, std = jnp.split(out, 2, -1)
         mean = jnp.tanh(mean)
-        stddev = jax.nn.softplus(stddev) + self.min_std
-        return mean, stddev
+        std = jax.nn.softplus(std) + self.min_std
+        return mean, std
 
 
 class QuantileNetwork(hk.Module):
@@ -100,9 +100,9 @@ class QuantileNetwork(hk.Module):
         self.embedding_dim = embedding_dim
 
     def __call__(self, tau):
-        chex.assert_tree_shape_suffix(tau, (1,))
         x = jnp.arange(self.embedding_dim, dtype=tau.dtype)
         x = jnp.expand_dims(x, 0)
+        tau = jnp.expand_dims(tau, -1)
         x = jnp.cos(jnp.pi * tau @ x)
         x = hk.Linear(self.output_dim)(x)
         return jax.nn.relu(x)
@@ -123,8 +123,9 @@ class DistributionalCritic(hk.Module):
         chex.assert_equal_rank([state, action, tau])
 
         x = jnp.concatenate([state, action], -1)
-        x = jnp.expand_dims(x, -2)
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
+        # implicit broadcasting
+        x = jnp.expand_dims(x, -2)
         x = self._net(x * tau)
         return jnp.squeeze(x, -1)
 
@@ -142,8 +143,8 @@ class Encoder(hk.Module):
                  ):
         super().__init__(name='encoder')
         self.mlp_keys = mlp_keys
-        self.mlp_layers = tuple(mlp_layers)
         self.cnn_keys = cnn_keys
+        self.mlp_layers = tuple(mlp_layers)
         self.cnn_kernels = tuple(cnn_kernels)
         self.cnn_depth = cnn_depth
         self.act = act
@@ -151,6 +152,8 @@ class Encoder(hk.Module):
         self.feature_fusion = feature_fusion
 
     def __call__(self, obs: dict[str, jnp.ndarray]) -> jnp.ndarray:
+        """Works with unbatched inputs,
+        since there is jax.vmap and hk.BatchApply."""
         def match_concat(pattern, ndim):
             values = [
                 val for key, val in obs.items()
@@ -167,16 +170,19 @@ class Encoder(hk.Module):
             if mlp_features is not None:
                 mlp_features = jnp.tile(
                     mlp_features,
-                    reps=cnn_features.shape[:2] + (1,)
+                    reps=cnn_features.shape[:2] + (1,)  # HWC
                 )
                 cnn_features = jnp.concatenate([cnn_features, mlp_features], -1)
-            return self._cnn(cnn_features)
+                mlp_features = None
 
         outputs = []
         if mlp_features is not None:
             outputs.append(self._mlp(mlp_features))
         if cnn_features is not None:
             outputs.append(self._cnn(cnn_features))
+        if not outputs:
+            raise ValueError(f"No valid key: {obs.keys()}")
+
         return jnp.concatenate(outputs, -1)
 
     def _cnn(self, x):
@@ -205,7 +211,10 @@ class MPONetworks(NamedTuple):
     make_policy: Callable
 
 
-def make_networks(cfg: MPOConfig, observation_spec, action_spec):
+def make_networks(cfg: MPOConfig,
+                  observation_spec: Dict[str, specs.Array],
+                  action_spec: specs.Array
+                  ) -> MPONetworks:
     prec = jmp.get_policy(cfg.mp_policy)
     hk.mixed_precision.set_policy(Encoder, prec)
     hk.mixed_precision.set_policy(Actor, prec)
@@ -262,8 +271,9 @@ def make_networks(cfg: MPOConfig, observation_spec, action_spec):
 
         return init, (encoder, actor, critic)
 
-    def make_policy(mean, stddev):
-        return tfd.TruncatedNormal(mean, stddev, -1, 1)
+    def make_policy(mean, stddev) -> tfd.Distribution:
+        dist = tfd.TruncatedNormal(mean, stddev, -1, 1)
+        return tfd.Independent(dist, 1)
 
     encoder_fn, actor_fn, critic_fn = _.apply
     return MPONetworks(

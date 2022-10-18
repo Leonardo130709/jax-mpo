@@ -40,13 +40,13 @@ class Actor:
             if training:
                 action = dist.sample(seed=key)
             else:
-                action = dist.bijector(dist.distribution.mean())
+                action = dist.distribution.mean()
             return action
 
         self._env = env
         self._rng_seq = hk.PRNGSequence(rng_key)
         self._act = _act
-        self.config = config
+        self.cfg = config
         self._client = client
         self.num_interactions = 0
         self._params = None
@@ -57,7 +57,7 @@ class Actor:
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
 
-    def simulate(self, env, training): # todo: move to EnvironmentLoop
+    def simulate(self, env, training):
         steps = 0
         seq_len = self.config.seq_len
         self._rng_seq.reserve(1000 // self.config.action_repeat)
@@ -90,13 +90,15 @@ class Actor:
         return steps
 
     def eval(self):
-        self._rng_seq.reserve(1000 // self.config.action_repeat)
         timestep = self._env.reset()
         total_reward = 0
         while not timestep.last():
             action = self.act(timestep.observation, training=False)
-            timestep = self._env.step(action)
-            total_reward += timestep.reward
+            for _ in range(self.cfg.action_repeat):
+                timestep = self._env.step(action)
+                total_reward += timestep.reward
+                if timestep.last():
+                    break
 
         return total_reward
 
@@ -105,21 +107,41 @@ class Actor:
         action = self._act(self._params, rng, observation, training)
         return np.asarray(action)
 
-    def get_params(self):
+    def update_params(self):
         params = next(self._weights_ds).data
-        return jax.tree_util.tree_map(lambda x: jax.device_put(x, CPU), params)
+        self._params = jax.tree_util.tree_map(
+            lambda x: jax.device_put(x, CPU), params)
 
     def run(self):
-        if self.config.total_episodes > 0:
-            episodes = range(self.config.total_episodes)
+        if self.cfg.total_steps > 0:
+            steps = range(self.cfg.total_steps)
         else:
-            episodes = itertools.count()
+            steps = itertools.count()
 
-        for ep in episodes:
-            self._params = self.get_params()
-            steps = self.simulate(self._env, training=True)
-            self.num_interactions += steps * self.config.action_repeat
-            if ep % 10 == 0:
-                print(f'Return after {self.num_interactions} '
-                      f'interactions: {self.eval()}')
+        timestep = self._env.reset()
+        with self._client.trajectory_writer(
+                num_keep_alive_refs=self.cfg.n_step) as writer:
+            for step in steps:
+                if step % 100 == 0:
+                    self.update_params()
 
+                observation = timestep.observation
+                action = self.act(observation, training=True)
+                reward = 0
+                for _ in range(self.cfg.action_repeat):
+                    timestep = self._env.step(action)
+                    self.num_interactions += 1
+                    reward += timestep.reward
+                    if timestep.last():
+                        break
+
+                writer.append({
+                    'observation': observation,
+                    'action': action,
+                    'reward': reward,
+                    'discount': not timestep.last(),
+                    'next_observation': timestep.observation()
+                })
+
+                if timestep.last():
+                    timestep = self._env.reset()
