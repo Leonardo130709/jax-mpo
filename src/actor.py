@@ -1,39 +1,40 @@
-from typing import NamedTuple, Any
-import functools
-import itertools
+import time
+from functools import partial
 
-import chex
+import dm_env
+import numpy as np
 import jax
 import jax.numpy as jnp
+import chex
 import haiku as hk
-import numpy as np
 import reverb
 
-from .networks import MPONetworks
-from .config import MPOConfig
-
-
-class Transitions(NamedTuple):
-    observations: Any
-    actions: Any
-    rewards: Any
-    next_observations: Any
-
+from src.networks import MPONetworks
+from src.config import MPOConfig
+from src.utils import env_loop
+from rltools.loggers import TerminalOutput
 
 CPU = jax.devices('cpu')[0]
 
 
 class Actor:
     def __init__(self,
-                 rng_key,
-                 env,
-                 config: MPOConfig,
+                 rng_key: jax.random.PRNGKey,
+                 env: dm_env.Environment,
+                 cfg: MPOConfig,
                  networks: MPONetworks,
-                 client: reverb.Client):
+                 client: reverb.Client
+                 ):
 
-        @functools.partial(jax.jit, backend='cpu', static_argnums=(3,))
+        jax.config.update('jax_disable_jit', not cfg.jit)
+
+        @partial(jax.jit, backend='cpu', static_argnums=(3,))
         @chex.assert_max_traces(n=2)
-        def _act(params, key, observation, training):
+        def _act(params: hk.Params,
+                 key: jax.random.PRNGKey,
+                 observation: jnp.ndarray,
+                 training: bool
+                 ) -> jnp.ndarray:
             state = networks.encoder(params, observation)
             policy_params = networks.actor(params, state)
             dist = networks.make_policy(*policy_params)
@@ -44,104 +45,114 @@ class Actor:
             return action
 
         self._env = env
+        self._prec = env.action_spec().dtype
         self._rng_seq = hk.PRNGSequence(rng_key)
         self._act = _act
-        self.cfg = config
+        self.cfg = cfg
         self._client = client
-        self.num_interactions = 0
-        self._params = None
         self._weights_ds = reverb.TimestepDataset.from_table_signature(
             client.server_address,
             table='weights',
             max_in_flight_samples_per_worker=1,
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
-
-    def simulate(self, env, training):
-        steps = 0
-        seq_len = self.config.seq_len
-        self._rng_seq.reserve(1000 // self.config.action_repeat)
-        nested_slice = lambda x: jax.tree_util.tree_map(lambda t: t[-seq_len:], x)
-        timestep = env.reset()
-        with self._client.trajectory_writer(seq_len) as writer:
-            while not timestep.last():
-                observation = timestep.observation
-                action = self.act(observation, training)
-                timestep = env.step(action)
-                writer.append(
-                    dict(
-                        observations=observation,
-                        actions=action,
-                        rewards=timestep.reward,
-                        next_observations=timestep.observation
-                    )
-                )
-                steps += 1
-
-                if training and steps >= seq_len:
-                    writer.create_item(
-                        table='replay_buffer',
-                        priority=1.,
-                        trajectory=nested_slice(writer.history)
-                    )
-                    writer.flush(block_until_num_items=4)
-            writer.end_episode()
-
-        return steps
-
-    def eval(self):
-        timestep = self._env.reset()
-        total_reward = 0
-        while not timestep.last():
-            action = self.act(timestep.observation, training=False)
-            for _ in range(self.cfg.action_repeat):
-                timestep = self._env.step(action)
-                total_reward += timestep.reward
-                if timestep.last():
-                    break
-
-        return total_reward
+        self._params = None
+        self.update_params()
 
     def act(self, observation, training):
         rng = next(self._rng_seq)
         action = self._act(self._params, rng, observation, training)
-        return np.asarray(action)
+        return np.asarray(action, dtype=self._prec)
 
     def update_params(self):
         params = next(self._weights_ds).data
-        self._params = jax.tree_util.tree_map(
-            lambda x: jax.device_put(x, CPU), params)
+        self._params = jax.device_put(params, CPU)
 
     def run(self):
-        if self.cfg.total_steps > 0:
-            steps = range(self.cfg.total_steps)
-        else:
-            steps = itertools.count()
-
+        step = 0
+        start = time.time()
+        should_update = Every(self.cfg.actor_update_every)
+        should_eval = Every(self.cfg.eval_every)
         timestep = self._env.reset()
-        with self._client.trajectory_writer(
-                num_keep_alive_refs=self.cfg.n_step) as writer:
-            for step in steps:
-                if step % 100 == 0:
-                    self.update_params()
+        eval_policy = partial(self.act, training=False)
+        train_policy = partial(self.act, training=True)
+        log = TerminalOutput()
 
-                observation = timestep.observation
-                action = self.act(observation, training=True)
-                reward = 0
-                for _ in range(self.cfg.action_repeat):
-                    timestep = self._env.step(action)
-                    self.num_interactions += 1
-                    reward += timestep.reward
-                    if timestep.last():
-                        break
+        def tree_slice(sl, tree, is_leaf=None):
+            return jax.tree_util.tree_map(
+                lambda t: t[sl], tree, is_leaf=is_leaf
+            )
 
-                writer.append({
-                    'observation': observation,
-                    'action': action,
-                    'reward': reward,
-                    'discount': not timestep.last(),
-                    'next_observation': timestep.observation()
-                })
+        while step < self.cfg.total_steps:
+            if should_update(step):
+                self.update_params()
 
-                if timestep.last():
-                    timestep = self._env.reset()
+            trajectory, timestep = env_loop.environment_loop(
+                self._env,
+                train_policy,
+                timestep,
+                self.cfg.train_seq_len,
+            )
+            tr_length = len(trajectory['actions'])
+            step += self.cfg.action_repeat * tr_length
+            metrics = {
+                "step": step,
+                "length": tr_length,
+                'total_reward': sum(trajectory['rewards']),
+                'time_expired': time.time() - start
+            }
+            log.write(metrics)
+
+            with self._client.trajectory_writer(num_keep_alive_refs=2) as writer:
+                def slice_writer(sl, key):
+                    return tree_slice(sl, writer.history[key])
+
+                for i in range(tr_length+1):
+                    if i < tr_length:
+                        writer.append(tree_slice(
+                            i, trajectory,
+                            is_leaf=lambda x: isinstance(x, list)
+                        ))
+                    else:
+                        # Here is the terminal obs.
+                        writer.append({'observations': timestep.observation})
+
+                    if i < 1:
+                        continue
+
+                    writer.create_item(
+                        table='replay_buffer',
+                        priority=1.,
+                        trajectory={
+                            'observations': slice_writer(-2, 'observations'),
+                            'actions': slice_writer(-2, 'actions'),
+                            'rewards': slice_writer(-2, 'rewards'),
+                            'discounts': slice_writer(-2, 'discounts'),
+                            'next_observations': slice_writer(-1, 'observations')
+                        }
+                    )
+                    writer.flush(block_until_num_items=10)
+
+            if should_eval(step):
+                trajectory, timestep = env_loop.environment_loop(
+                    self._env,
+                    eval_policy,
+                    self._env.reset()
+                )
+                total_reward = sum(trajectory['rewards'])
+                # Should eval steps also count in step?
+                print(step, total_reward)
+
+
+class Every:
+    def __init__(self, interval: int):
+        self.interval = interval
+        self._prev_step = 0
+
+    def __call__(self, step: int) -> bool:
+        assert step >= self._prev_step
+        diff = step - self._prev_step
+        if diff >= self.interval:
+            self._prev_step = step
+            return True
+        return False

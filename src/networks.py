@@ -124,7 +124,7 @@ class DistributionalCritic(hk.Module):
 
         x = jnp.concatenate([state, action], -1)
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
-        # implicit broadcasting
+        # w: implicit broadcasting
         x = jnp.expand_dims(x, -2)
         x = self._net(x * tau)
         return jnp.squeeze(x, -1)
@@ -213,24 +213,25 @@ class MPONetworks(NamedTuple):
 
 def make_networks(cfg: MPOConfig,
                   observation_spec: Dict[str, specs.Array],
-                  action_spec: specs.Array
+                  action_spec: specs.BoundedArray | specs.DiscreteArray
                   ) -> MPONetworks:
     prec = jmp.get_policy(cfg.mp_policy)
     hk.mixed_precision.set_policy(Encoder, prec)
     hk.mixed_precision.set_policy(Actor, prec)
     hk.mixed_precision.set_policy(DistributionalCritic, prec)
 
-    if isinstance(action_spec, specs.BoundedArray):
-        act_dim = action_spec.shape[0]
-    elif isinstance(action_spec, specs.DiscreteArray):
+    is_discrete = isinstance(action_spec, specs.DiscreteArray)
+
+    if is_discrete:
         act_dim = action_spec.num_values
     else:
-        raise ValueError
+        act_dim = action_spec.shape[0]
 
     obs = {
-        k: spec.generate_value().astype(prec.compute_dtype)
+        k: spec.generate_value()
         for k, spec in observation_spec.items()
     }
+    obs = prec.cast_to_compute(obs)
 
     @hk.without_apply_rng
     @hk.multi_transform
@@ -271,8 +272,14 @@ def make_networks(cfg: MPOConfig,
 
         return init, (encoder, actor, critic)
 
-    def make_policy(mean, stddev) -> tfd.Distribution:
-        dist = tfd.TruncatedNormal(mean, stddev, -1, 1)
+    def make_policy(*params: chex.Array) -> tfd.Distribution:
+        if is_discrete:
+            logits = params[0]
+            dist = tfd.OneHotCategorical(logits)
+        else:
+            mean, std = params
+            # TruncNormal gives wrong kl.
+            dist = tfd.TruncatedNormal(mean, std, -1, 1)
         return tfd.Independent(dist, 1)
 
     encoder_fn, actor_fn, critic_fn = _.apply

@@ -5,7 +5,7 @@ import reverb
 
 from src.builder import Builder
 from src.config import MPOConfig
-jax.config.update('jax_disable_jit', False)
+jax.config.update('jax_disable_jit', True)
 
 
 def run_actor(config, server_address):
@@ -29,29 +29,25 @@ def run_learner(config, server_address):
     learner.run()
 
 
+def run_server(builder, env_specs):
+    server = builder.make_server(env_specs)
+    server.wait()
+
+
 def main():
     config = MPOConfig()
     builder = Builder(config)
     env, env_specs = builder.make_env()
-
-    networks = builder.make_networks(env_specs)
-    port = 41905
-    server_address = f'localhost:{port}'
-    tables = builder.make_reverb_tables(env_specs, networks)
-    server = reverb.Server(tables, port=port)
-
-    learner_process = multiprocessing.Process(
-        target=run_learner,
-        args=(config, server_address)
-    )
-    actor_process = multiprocessing.Process(
-        target=run_actor,
-        args=(config, server_address)
-    )
-    learner_process.start()
-    actor_process.start()
-    actor_process.join()
-    learner_process.join()
+    address = f'localhost:{config.reverb_port}'
+    server = multiprocessing.Process(target=run_server,
+                                     args=(builder, env_specs))
+    server.start()
+    client = reverb.Client(address)
+    actor = builder.make_actor(env, env_specs, client)
+    ds = builder.make_dataset_iterator(address)
+    learner = builder.make_learner(env_specs, ds, client)
+    actor.run()
+    learner.run()
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import functools
 import jax
 import jax.scipy
 import jax.numpy as jnp
+import jmp
 import haiku as hk
 import optax
 import chex
@@ -33,6 +34,7 @@ class MPOState(NamedTuple):
     optim_state: optax.OptState
     dual_optim_state: optax.OptState
     rng_key: jax.random.PRNGKey
+    loss_scale: jmp.LossScale
     step: int
 
 
@@ -46,12 +48,13 @@ class MPOLearner:
             train_dataset: 'Dataset',
             client: reverb.Client
     ):
-
+        jax.config.update('jax_disable_jit', not cfg.jit)
         key, subkey = jax.random.split(rng_key)
         self._data_iterator = train_dataset
         self._client = client
         self._logger1 = TFSummaryLogger(logdir='tut', label='train', step_key='step')
         self._logger2 = JSONLogger('metrics.jsonl')
+        self._prec = jmp.get_policy(cfg.mp_policy)
 
         params = networks.init(subkey)
         init_duals = jnp.log(jnp.exp(cfg.init_duals) - 1.)
@@ -60,6 +63,7 @@ class MPOLearner:
                             jnp.full(act_dim, init_duals),
                             jnp.full(act_dim, init_duals)
                             )
+        dual_params = self._prec.cast_to_param(dual_params)
 
         adam = functools.partial(optax.adam,
                                  b1=cfg.adam_b1,
@@ -73,6 +77,12 @@ class MPOLearner:
         dual_optim = adam(cfg.dual_lr)
         optim_state = optim.init(params)
         dual_optim_state = dual_optim.init(dual_params)
+
+        if '16' in cfg.mp_policy:
+            loss_scale = jmp.DynamicLossScale(2 ** 15)
+        else:
+            loss_scale = jmp.NoOpLossScale()
+
         self._state = MPOState(
             params=params,
             target_params=params.copy(),
@@ -80,27 +90,24 @@ class MPOLearner:
             optim_state=optim_state,
             dual_optim_state=dual_optim_state,
             rng_key=key,
+            loss_scale=loss_scale,
             step=0
         )
 
         def mpo_loss(params,
                      dual_params,
                      target_params,
+                     loss_scale,
                      rng,
                      o_tm1, a_tm1, r_t, discount_t, o_t
                      ):
-            chex.assert_type([o_tm1, a_tm1, r_t, discount_t, o_t], float)
-            chex.assert_rank(
-                [o_tm1.values(), a_tm1, r_t, discount_t, o_t.values()],
-                [{1, 2, 3}, 1, 0, 0, {1, 2, 3}]
-            )
             sg = jax.lax.stop_gradient
             metrics = dict()
 
             k1, k2, k3 = jax.random.split(rng, 3)
             tau_tm1 = jax.random.uniform(
                 k1,
-                cfg.num_quantiles,
+                (cfg.num_quantiles,),
                 dtype=a_tm1.dtype
             )
             tau_t = jax.random.uniform(
@@ -108,15 +115,14 @@ class MPOLearner:
                 (cfg.num_actions, cfg.num_quantiles),
                 dtype=a_tm1.dtype
             )
-
             s_tm1 = networks.encoder(params, o_tm1)
             s_t = networks.encoder(params, o_t)
             target_s_t = networks.encoder(target_params, o_t)
             # Target stale state can be used if actor is detached.
-            s_t = jax.lax.switch(cfg.stop_actor_grad, sg(s_t), s_t)
+            s_t = jax.lax.select(cfg.stop_actor_grad, sg(s_t), s_t)
 
-            target_params = networks.actor(target_params, target_s_t)
-            target_dist = networks.make_policy(*target_params)
+            target_policy_params = networks.actor(target_params, target_s_t)
+            target_dist = networks.make_policy(*target_policy_params)
             a_t = target_dist.sample(seed=k3, sample_shape=cfg.num_actions)
 
             target_s_t = jnp.repeat(
@@ -130,9 +136,9 @@ class MPOLearner:
             critic_loss = ops.quantile_regression_loss(
                 z_tm1, tau_tm1, target_z_tm1, cfg.hubber_delta)
 
-            temperature, alpha_mean, alpha_std =\
+            temperature, alpha_mean, alpha_std = \
                 jax.tree_util.tree_map(ops.softplus, dual_params)
-            temperature_loss, normalized_weights =\
+            temperature_loss, normalized_weights = \
                 ops.temperature_loss_and_normalized_weights(
                     temperature,
                     q_t,
@@ -187,9 +193,9 @@ class MPOLearner:
             metrics.update(metrics_mean)
             metrics.update(metrics_std)
 
-            return total_loss, metrics
+            return loss_scale.scale(total_loss), metrics
 
-        @chex.assert_max_traces(n=2)
+        @chex.assert_max_traces(n=2)  # As first optim state is EmptyState.
         def _step(mpostate: MPOState, data):
             params = mpostate.params
             target_params = mpostate.target_params
@@ -197,6 +203,7 @@ class MPOLearner:
             optim_state = mpostate.optim_state
             dual_optim_state = mpostate.dual_optim_state
             rng_key = mpostate.rng_key
+            loss_scale = mpostate.loss_scale
             step = mpostate.step
 
             observations, actions, rewards, discounts, next_observations =\
@@ -208,40 +215,46 @@ class MPOLearner:
                      'discounts',
                      'next_observations')
                 )
-            chex.assert_equal_shape_suffix(
-                [actions, observations], cfg.batch_size)
+            chex.assert_tree_shape_prefix(actions, (cfg.batch_size,))
             discounts *= cfg.discount ** cfg.n_step
             keys = jax.random.split(rng_key, num=cfg.batch_size+1)
-            rng_key, subkeys = keys[0], keys[0:]
-            in_axes = 3 * (None,) + 6 * (0,)
-            loss_fn = jax.vmap(mpo_loss, in_axes=in_axes)
-            grad_fn = jax.grad(loss_fn, argnums=2, has_aux=True)
+            rng_key, subkeys = keys[0], keys[1:]
 
-            (params_grads, dual_grads), metrics = grad_fn(
-                params,
-                dual_params,
-                target_params,
-                subkeys,
-                observations,
-                actions,
-                rewards,
-                discounts,
-                next_observations
+            in_axes = 4 * (None,) + 6 * (0,)
+            args = (
+                params, dual_params, target_params, loss_scale, subkeys,
+                observations, actions, rewards, discounts, next_observations
             )
+            in_axes = tuple(
+                jax.tree_util.tree_map(lambda t: axis, val)
+                for axis, val in zip(in_axes, args)
+            )
+            grad_fn = jax.grad(mpo_loss, argnums=(0, 1), has_aux=True)
+
+            (params_grads, dual_grads), metrics =\
+                jax.vmap(grad_fn, in_axes=in_axes)(*args)
             params_grads, dual_grads, metrics = jax.tree_util.tree_map(
                 lambda t: jnp.mean(t, axis=0),
                 (params_grads, dual_grads, metrics)
             )
+            params_grads, dual_grads = loss_scale.unscale(
+                (params_grads, dual_grads))
+            grads_finite = jmp.all_finite(params_grads)
+            loss_scale = loss_scale.adjust(grads_finite)
 
-            params_update, optim_state = optim.update(
-                params_grads, optim_state)
-            dual_update, dual_optim_state = dual_optim.update(
-                dual_grads, dual_optim_state)
-            params = optax.apply_updates(params, params_update)
-            dual_params = optax.apply_updates(dual_params, dual_update)
+            if grads_finite:
+                params_update, optim_state = optim.update(
+                    params_grads, optim_state)
+                dual_update, dual_optim_state = dual_optim.update(
+                    dual_grads, dual_optim_state)
+                params = optax.apply_updates(params, params_update)
+                dual_params = optax.apply_updates(dual_params, dual_update)
 
-            target_params = optax.periodic_update(
-                params, target_params, step, cfg.target_update_period)
+                target_params = optax.periodic_update(
+                    params, target_params, step, cfg.target_update_period)
+
+            metrics.update(grads_finite=grads_finite,
+                           loss_scale=loss_scale.loss_scale)
 
             return MPOState(params=params,
                             target_params=target_params,
@@ -249,6 +262,7 @@ class MPOLearner:
                             optim_state=optim_state,
                             dual_optim_state=dual_optim_state,
                             rng_key=rng_key,
+                            loss_scale=loss_scale,
                             step=step+1
                             ),  metrics
 
@@ -270,4 +284,6 @@ class MPOLearner:
     @functools.partial(jax.jit, static_argnums=0)
     @chex.assert_max_traces(n=1)
     def _preprocess(self, data):
-        return jax.tree_util.tree_map(jnp.asarray, data)
+        data = jax.device_put(data)
+        data['discounts'] = data['discounts'].astype(jnp.float32)
+        return self._prec.cast_to_compute(data)
