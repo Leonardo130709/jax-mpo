@@ -43,17 +43,16 @@ class MPOLearner:
             self,
             rng_key: jax.random.PRNGKey,
             cfg: MPOConfig,
-            env_spec: 'EnvironmentSpec',
+            env_spec: "EnvironmentSpec",
             networks: MPONetworks,
-            train_dataset: 'Dataset',
+            train_dataset: "Dataset",
             client: reverb.Client
     ):
-        jax.config.update('jax_disable_jit', not cfg.jit)
+        jax.config.update("jax_disable_jit", not cfg.jit)
         key, subkey = jax.random.split(rng_key)
+        self._cfg = cfg
         self._data_iterator = train_dataset
         self._client = client
-        self._logger1 = TFSummaryLogger(logdir='tut', label='train', step_key='step')
-        self._logger2 = JSONLogger('metrics.jsonl')
         self._prec = jmp.get_policy(cfg.mp_policy)
 
         params = networks.init(subkey)
@@ -78,7 +77,7 @@ class MPOLearner:
         optim_state = optim.init(params)
         dual_optim_state = dual_optim.init(dual_params)
 
-        if '16' in cfg.mp_policy:
+        if "16" in cfg.mp_policy:
             loss_scale = jmp.DynamicLossScale(2 ** 15)
         else:
             loss_scale = jmp.NoOpLossScale()
@@ -115,6 +114,7 @@ class MPOLearner:
                 (cfg.num_actions, cfg.num_quantiles),
                 dtype=a_tm1.dtype
             )
+            # TODO: heavy encoder called 3 times. Is it really required?
             s_tm1 = networks.encoder(params, o_tm1)
             s_t = networks.encoder(params, o_t)
             target_s_t = networks.encoder(target_params, o_t)
@@ -124,9 +124,9 @@ class MPOLearner:
             target_policy_params = networks.actor(target_params, target_s_t)
             target_dist = networks.make_policy(*target_policy_params)
             a_t = target_dist.sample(seed=k3, sample_shape=cfg.num_actions)
-
             target_s_t = jnp.repeat(
                 target_s_t[jnp.newaxis], cfg.num_actions, axis=0)
+
             z_t = networks.critic(target_params, target_s_t, a_t, tau_t)
             z_tm1 = networks.critic(params, s_tm1, a_tm1, tau_tm1)
             v_t = jnp.mean(z_t, axis=0)
@@ -142,7 +142,8 @@ class MPOLearner:
                 ops.temperature_loss_and_normalized_weights(
                     temperature,
                     q_t,
-                    cfg.epsilon_eta
+                    cfg.epsilon_eta,
+                    cfg.tv_constraint
                 )
 
             mean, std = networks.actor(params, s_t)
@@ -162,25 +163,28 @@ class MPOLearner:
                     online_dist.distribution
                 )
                 scaled_kl_loss, dual_loss = ops.scaled_and_dual_loss(
-                    kl_loss, duals, epsilon, per_dimension=True)
+                    kl_loss, duals, epsilon, per_dimension=True
+                )
                 loss = ce_loss + scaled_kl_loss + dual_loss
-                pfx = lambda s: f'{prefix}_{s}'
+                pfx = lambda k: f"{prefix}_{k}"
                 met = {
-                    pfx('ce_loss'): ce_loss,
-                    pfx('kl'): jnp.sum(kl_loss),
-                    pfx('dual_loss'): dual_loss
+                    pfx("ce_loss"): ce_loss,
+                    pfx("kl"): jnp.sum(kl_loss),
+                    pfx("kl_rel"): jnp.mean(kl_loss) / epsilon,
+                    pfx("dual_loss"): dual_loss,
                 }
                 return .5 * loss, met
 
             mean_loss, metrics_mean = policy_loss(
-                fixed_std, alpha_mean, cfg.epsilon_mean, prefix='mean')
+                fixed_std, alpha_mean, cfg.epsilon_mean, prefix="mean")
             std_loss, metrics_std = policy_loss(
-                fixed_mean, alpha_std, cfg.epsilon_std, prefix='std')
+                fixed_mean, alpha_std, cfg.epsilon_std, prefix="std")
             total_loss = critic_loss + mean_loss + std_loss + temperature_loss
 
             metrics.update(
                 critic_loss=critic_loss,
                 mean_value=jnp.mean(v_t),
+                value_std=jnp.std(v_t),
                 entropy=fixed_mean.entropy(),
                 temperature=temperature,
                 alpha_mean=jnp.mean(alpha_mean),
@@ -209,13 +213,14 @@ class MPOLearner:
             observations, actions, rewards, discounts, next_observations =\
                 map(
                     data.get,
-                    ('observations',
-                     'actions',
-                     'rewards',
-                     'discounts',
-                     'next_observations')
+                    ("observations",
+                     "actions",
+                     "rewards",
+                     "discounts",
+                     "next_observations")
                 )
             chex.assert_tree_shape_prefix(actions, (cfg.batch_size,))
+            # TODO: n_step calc should be done pre inserting buffer.
             discounts *= cfg.discount ** cfg.n_step
             keys = jax.random.split(rng_key, num=cfg.batch_size+1)
             rng_key, subkeys = keys[0], keys[1:]
@@ -238,23 +243,27 @@ class MPOLearner:
                 (params_grads, dual_grads, metrics)
             )
             params_grads, dual_grads = loss_scale.unscale(
-                (params_grads, dual_grads))
-            grads_finite = jmp.all_finite(params_grads)
+                (params_grads, dual_grads)
+            )
+            grads_finite = jmp.all_finite((params_grads, dual_grads))
             loss_scale = loss_scale.adjust(grads_finite)
 
-            if grads_finite:
-                params_update, optim_state = optim.update(
-                    params_grads, optim_state)
-                dual_update, dual_optim_state = dual_optim.update(
-                    dual_grads, dual_optim_state)
-                params = optax.apply_updates(params, params_update)
-                dual_params = optax.apply_updates(dual_params, dual_update)
-
-                target_params = optax.periodic_update(
-                    params, target_params, step, cfg.target_update_period)
+            # if grads_finite:
+            params_update, optim_state = optim.update(
+                params_grads, optim_state)
+            dual_update, dual_optim_state = dual_optim.update(
+                dual_grads, dual_optim_state)
+            params = optax.apply_updates(params, params_update)
+            dual_params = optax.apply_updates(dual_params, dual_update)
+            target_params = optax.periodic_update(
+                params, target_params, step, cfg.target_update_period)
+            step += 1
 
             metrics.update(grads_finite=grads_finite,
-                           loss_scale=loss_scale.loss_scale)
+                           loss_scale=loss_scale.loss_scale,
+                           params_grad_norm=optax.global_norm(params_grads),
+                           dual_grad_norm=optax.global_norm(dual_grads)
+                           )
 
             return MPOState(params=params,
                             target_params=target_params,
@@ -263,27 +272,34 @@ class MPOLearner:
                             dual_optim_state=dual_optim_state,
                             rng_key=rng_key,
                             loss_scale=loss_scale,
-                            step=step+1
+                            step=step
                             ),  metrics
 
-        self._step = _step
+        self._step = jax.jit(_step)
 
     def run(self):
+        logger = TFSummaryLogger(logdir=self._cfg.logdir,
+                                 label="train",
+                                 step_key="step")
         while True:
             data = next(self._data_iterator)
             info, data = data
             data = self._preprocess(data)
             self._state, metrics = self._step(self._state, data)
-            self._client.insert(self._state.params, {'weights': 1.})
 
-            metrics = jax.tree_util.tree_map(float, metrics)
-            metrics.update(step=self._state.step)
-            self._logger1.write(metrics)
-            self._logger2.write(metrics)
+            step = self._state.step
+            if step % self._cfg.learner_dump_every == 0:
+                self._client.insert(self._state.params, {"weights": 1.})
+
+            if step % self._cfg.log_every == 0:
+                chex.assert_rank(jax.tree_leaves(metrics), 0)
+                metrics = jax.tree_util.tree_map(float, metrics)
+                metrics["step"] = step
+                logger.write(metrics)
 
     @functools.partial(jax.jit, static_argnums=0)
     @chex.assert_max_traces(n=1)
     def _preprocess(self, data):
         data = jax.device_put(data)
-        data['discounts'] = data['discounts'].astype(jnp.float32)
+        data["discounts"] = data["discounts"].astype(jnp.float32)
         return self._prec.cast_to_compute(data)

@@ -11,36 +11,39 @@ class MPOConfig(Config):
     num_actions: int = 20
     num_quantiles: int = 8
     epsilon_eta: float = .1
-    epsilon_mean: float = 2.5e-3
-    epsilon_std: float = 1e-6
+    epsilon_mean: float = .1
+    epsilon_std: float = 1e-4
+    tv_constraint: float = float("inf")
     init_duals: float = 10.
-    hubber_delta: float = 1.
+    hubber_delta: float = 1e-3
 
     # Model
-    activation: str = 'relu'
-    normalization: str = 'none'
+    activation: str = "relu"
+    normalization: str = "none"
     stop_actor_grad: bool = True
     #   Encoder
-    cnn_keys: str = r'.*'
-    mlp_keys: str = r'.*'
-    cnn_kernels: tuple[int] = (48, 48, 48, 48)
+    cnn_keys: str = r".*"
+    mlp_keys: str = r".*"
+    pn_keys: str = r".*"
+    cnn_kernels: tuple[int] = (4, 4, 4, 4)
     cnn_depth: int = 48
-    mlp_layers: tuple[int] = (256, 256, 256, 256)
+    mlp_layers: tuple[int] = ()
     pn_layers: tuple[int] = (64, 256, 512)
     feature_fusion: bool = False
     #   Actor
-    actor_layers: tuple[int] = (256, 256)
+    actor_layers: tuple[int] = (128, 128)
     min_std: float = .1
     #   Critic
-    critic_layers: tuple[int] = (512, 512)
+    critic_layers: tuple[int] = (256, 256)
     quantile_embedding_dim: int = 64
 
     # reverb
-    min_replay_size: int = 1e2
-    samples_per_insert: int = 512
-    batch_size: int = 64
+    min_replay_size: int = 1e4
+    samples_per_insert: int = 64
+    batch_size: int = 128
     buffer_capacity: int = int(1e6)
-    actor_update_every: int = 100
+    actor_update_every: int = 1
+    learner_dump_every: int = 100
     reverb_port: int = 4446
 
     # training
@@ -50,16 +53,17 @@ class MPOConfig(Config):
     adam_b2: float = .999
     adam_eps: float = 1e-6
     target_update_period: int = 100
-    train_seq_len: int = 100
+    seq_len: int = 100
     eval_every: int = 1e4
+    log_every: int = 1e2
     eval_times: int = 5
     grad_norm: float = 40.
-    mp_policy: str = 'p=f32,c=f32,o=f32'
+    mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
 
     # task
     seed: int = 0
-    task: str = 'dmc_cartpole_balance'
-    logdir: str = 'logdir'
-    total_steps: int = 1e2
+    task: str = "dmc_walker_walk"
+    logdir: str = "logdir/walker_walk_min_hubber"
+    total_steps: int = 1e6
     time_limit: int = 1e3

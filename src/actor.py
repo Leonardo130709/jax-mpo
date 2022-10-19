@@ -14,7 +14,7 @@ from src.config import MPOConfig
 from src.utils import env_loop
 from rltools.loggers import TerminalOutput
 
-CPU = jax.devices('cpu')[0]
+CPU = jax.devices("cpu")[0]
 
 
 class Actor:
@@ -26,9 +26,9 @@ class Actor:
                  client: reverb.Client
                  ):
 
-        jax.config.update('jax_disable_jit', not cfg.jit)
+        jax.config.update("jax_disable_jit", not cfg.jit)
 
-        @partial(jax.jit, backend='cpu', static_argnums=(3,))
+        @partial(jax.jit, backend="cpu", static_argnums=(3,))
         @chex.assert_max_traces(n=2)
         def _act(params: hk.Params,
                  key: jax.random.PRNGKey,
@@ -42,17 +42,18 @@ class Actor:
                 action = dist.sample(seed=key)
             else:
                 action = dist.distribution.mean()
+            action = jnp.clip(action, a_min=-1, a_max=1)
             return action
 
         self._env = env
-        self._prec = env.action_spec().dtype
+        self._act_prec = env.action_spec().dtype
         self._rng_seq = hk.PRNGSequence(rng_key)
         self._act = _act
         self.cfg = cfg
         self._client = client
         self._weights_ds = reverb.TimestepDataset.from_table_signature(
             client.server_address,
-            table='weights',
+            table="weights",
             max_in_flight_samples_per_worker=1,
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
@@ -62,7 +63,7 @@ class Actor:
     def act(self, observation, training):
         rng = next(self._rng_seq)
         action = self._act(self._params, rng, observation, training)
-        return np.asarray(action, dtype=self._prec)
+        return np.asarray(action, dtype=self._act_prec)
 
     def update_params(self):
         params = next(self._weights_ds).data
@@ -91,19 +92,12 @@ class Actor:
                 self._env,
                 train_policy,
                 timestep,
-                self.cfg.train_seq_len,
+                self.cfg.seq_len,
             )
-            tr_length = len(trajectory['actions'])
+            tr_length = len(trajectory["actions"])
             step += self.cfg.action_repeat * tr_length
-            metrics = {
-                "step": step,
-                "length": tr_length,
-                'total_reward': sum(trajectory['rewards']),
-                'time_expired': time.time() - start
-            }
-            log.write(metrics)
 
-            with self._client.trajectory_writer(num_keep_alive_refs=2) as writer:
+            with self._client.trajectory_writer(2) as writer:
                 def slice_writer(sl, key):
                     return tree_slice(sl, writer.history[key])
 
@@ -115,33 +109,47 @@ class Actor:
                         ))
                     else:
                         # Here is the terminal obs.
-                        writer.append({'observations': timestep.observation})
+                        writer.append({"observations": timestep.observation})
 
                     if i < 1:
                         continue
 
                     writer.create_item(
-                        table='replay_buffer',
+                        table="replay_buffer",
                         priority=1.,
                         trajectory={
-                            'observations': slice_writer(-2, 'observations'),
-                            'actions': slice_writer(-2, 'actions'),
-                            'rewards': slice_writer(-2, 'rewards'),
-                            'discounts': slice_writer(-2, 'discounts'),
-                            'next_observations': slice_writer(-1, 'observations')
+                            "observations": slice_writer(-2, "observations"),
+                            "actions": slice_writer(-2, "actions"),
+                            "rewards": slice_writer(-2, "rewards"),
+                            "discounts": slice_writer(-2, "discounts"),
+                            "next_observations": slice_writer(-1, "observations")
                         }
                     )
                     writer.flush(block_until_num_items=10)
 
             if should_eval(step):
-                trajectory, timestep = env_loop.environment_loop(
-                    self._env,
-                    eval_policy,
-                    self._env.reset()
-                )
-                total_reward = sum(trajectory['rewards'])
+                returns = []
+                dur = []
+                for _ in range(self.cfg.eval_times):
+                    tr, timestep = env_loop.environment_loop(
+                        self._env,
+                        eval_policy,
+                        self._env.reset()
+                    )
+                    returns.append(sum(tr["rewards"]))
+                    dur.append(len(tr["actions"]))
+
+                now = time.strftime("%H:%M", time.gmtime(time.time() - start))
+                eval_metrics = {
+                    "step": step,
+                    'time_expired': now,
+                    "train_return": sum(trajectory['rewards']),
+                    "eval_returns_mean": np.mean(returns),
+                    "eval_return_std": np.std(returns),
+                    "eval_duration_mean": np.mean(dur)
+                }
                 # Should eval steps also count in step?
-                print(step, total_reward)
+                log.write(eval_metrics)
 
 
 class Every:

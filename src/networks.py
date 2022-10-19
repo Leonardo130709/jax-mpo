@@ -15,7 +15,7 @@ tfd = tfp.distributions
 
 
 def get_act(name: str) -> Callable[[jnp.ndarray], jnp.ndarray]:
-    if name == 'identity':
+    if name == "none":
         return lambda x: x
     elif hasattr(jax.nn, name):
         return getattr(jax.nn, name)
@@ -31,7 +31,7 @@ class NormLayer(hk.Module):
         self.norm = norm
 
     def __call__(self, x):
-        if self.norm == 'layer':
+        if self.norm == "layer":
             return hk.LayerNorm(
                 axis=-1,
                 create_scale=True,
@@ -44,15 +44,14 @@ class MLP(hk.Module):
     """MLP w/o dropout but with preactivation normalization."""
 
     def __init__(self,
-                 output_size: int,
                  layers: Iterable[int],
-                 act: str = 'elu',
-                 norm: str = 'none',
+                 act: str = "elu",
+                 norm: str = "none",
                  activate_final: bool = False,
                  name: str = None
                  ):
         super().__init__(name=name)
-        output_sizes = tuple(layers) + (output_size,)
+        output_sizes = tuple(layers)
         num_layers = len(output_sizes)
         layers = []
 
@@ -70,25 +69,35 @@ class MLP(hk.Module):
 
 class Actor(hk.Module):
     def __init__(self,
-                 act_dim,
+                 action_spec,
                  layers: Iterable[int],
-                 act: str = 'elu',
-                 norm: str = 'none',
+                 act: str = "elu",
+                 norm: str = "none",
                  min_std: float = 0.1
                  ):
-        super().__init__(name='actor')
-        # Add discrete params.
+        super().__init__(name="actor")
+
+        self._discrete = isinstance(action_spec, specs.DiscreteArray)
+        if self._discrete:
+            # act_dim = action_spec.num_values
+            raise NotImplementedError
+        else:
+            output_dim = 2 * action_spec.shape[0]
+
+        self._net = MLP(tuple(layers) + (output_dim,), act, norm)
         self.min_std = min_std
-        self._net = MLP(2 * act_dim, layers, act, norm)
 
     def __call__(self, state):
         """Actor returns params instead of a distribution itself
         since tfd.Distribution doesn't play nicely with jax.vmap."""
         out = self._net(state)
-        mean, std = jnp.split(out, 2, -1)
-        mean = jnp.tanh(mean)
-        std = jax.nn.softplus(std) + self.min_std
-        return mean, std
+        if not self._discrete:
+            mean, std = jnp.split(out, 2, -1)
+            mean = jnp.tanh(mean)
+            std = jax.nn.softplus(std) + self.min_std
+            return mean, std
+
+        raise NotImplementedError
 
 
 class QuantileNetwork(hk.Module):
@@ -112,11 +121,13 @@ class DistributionalCritic(hk.Module):
     def __init__(self,
                  layers: Iterable[int],
                  quantile_embedding_dim: int,
-                 act: str = 'elu',
-                 norm: str = 'none',
+                 act: str = "elu",
+                 norm: str = "none",
                  ):
-        super().__init__(name='critic')
-        self._net = MLP(1, layers, act, norm)
+        super().__init__(name="critic")
+        self.layers = tuple(layers)
+        self.act = act
+        self.norm = norm
         self.quantile_embedding_dim = quantile_embedding_dim
 
     def __call__(self, state, action, tau):
@@ -126,25 +137,36 @@ class DistributionalCritic(hk.Module):
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
         # w: implicit broadcasting
         x = jnp.expand_dims(x, -2)
-        x = self._net(x * tau)
+        x = MLP(self.layers + (1,), self.act, self.norm)(x * tau)
         return jnp.squeeze(x, -1)
+
+
+class DDCritic(DistributionalCritic):
+    def __call__(self, *args, **kwargs):
+        z1 = super().__call__(*args, **kwargs)
+        z2 = super().__call__(*args, **kwargs)
+        return jnp.stack([z1, z2], -1)
 
 
 class Encoder(hk.Module):
     def __init__(self,
                  mlp_keys: str,
+                 pn_keys: str,
                  cnn_keys: str,
                  mlp_layers: Iterable[int],
+                 pn_layers: Iterable[int],
                  cnn_kernels: Iterable[int],
                  cnn_depth: int,
                  act: str,
                  norm: str,
                  feature_fusion: bool = False,
                  ):
-        super().__init__(name='encoder')
+        super().__init__(name="encoder")
         self.mlp_keys = mlp_keys
+        self.pn_keys = pn_keys
         self.cnn_keys = cnn_keys
         self.mlp_layers = tuple(mlp_layers)
+        self.pn_layers = tuple(pn_layers)
         self.cnn_kernels = tuple(cnn_kernels)
         self.cnn_depth = cnn_depth
         self.act = act
@@ -164,6 +186,7 @@ class Encoder(hk.Module):
             return None
 
         mlp_features = match_concat(self.mlp_keys, 1)
+        pn_features = match_concat(self.pn_keys, 2)
         cnn_features = match_concat(self.cnn_keys, 3)
 
         if self.feature_fusion and cnn_features is not None:
@@ -178,6 +201,8 @@ class Encoder(hk.Module):
         outputs = []
         if mlp_features is not None:
             outputs.append(self._mlp(mlp_features))
+        if pn_features is not None:
+            outputs.append(self._pn(pn_features))
         if cnn_features is not None:
             outputs.append(self._cnn(cnn_features))
         if not outputs:
@@ -193,14 +218,22 @@ class Encoder(hk.Module):
         return x.reshape(-1)
 
     def _mlp(self, x):
-        *layers, out_dim = self.mlp_layers
         return MLP(
-            out_dim,
-            layers,
+            self.mlp_layers,
             self.act,
             self.norm,
             activate_final=True
         )(x)
+
+    def _pn(self, x):
+        *layers, out_dim = self.pn_layers
+        x = MLP(layers,
+                self.act,
+                self.norm,
+                activate_final=True
+                )(x)
+        x = jnp.max(x, axis=-2)
+        return hk.Linear(out_dim)(x)
 
 
 class MPONetworks(NamedTuple):
@@ -221,12 +254,6 @@ def make_networks(cfg: MPOConfig,
     hk.mixed_precision.set_policy(DistributionalCritic, prec)
 
     is_discrete = isinstance(action_spec, specs.DiscreteArray)
-
-    if is_discrete:
-        act_dim = action_spec.num_values
-    else:
-        act_dim = action_spec.shape[0]
-
     obs = {
         k: spec.generate_value()
         for k, spec in observation_spec.items()
@@ -235,11 +262,13 @@ def make_networks(cfg: MPOConfig,
 
     @hk.without_apply_rng
     @hk.multi_transform
-    def _():
+    def model():
         encoder = Encoder(
             cfg.mlp_keys,
+            cfg.pn_keys,
             cfg.cnn_keys,
             cfg.mlp_layers,
+            cfg.pn_layers,
             cfg.cnn_kernels,
             cfg.cnn_depth,
             cfg.activation,
@@ -247,7 +276,7 @@ def make_networks(cfg: MPOConfig,
             cfg.feature_fusion
         )
         actor = Actor(
-            act_dim,
+            action_spec,
             cfg.actor_layers,
             cfg.activation,
             cfg.normalization,
@@ -279,15 +308,68 @@ def make_networks(cfg: MPOConfig,
         else:
             mean, std = params
             # TruncNormal gives wrong kl.
-            dist = tfd.TruncatedNormal(mean, std, -1, 1)
+            # dist = tfd.TruncatedNormal(mean, std, -1, 1)
+            dist = tfd.Normal(mean, std)
         return tfd.Independent(dist, 1)
 
-    encoder_fn, actor_fn, critic_fn = _.apply
+    encoder_fn, actor_fn, critic_fn = model.apply
     return MPONetworks(
-        init=_.init,
+        init=model.init,
         encoder=encoder_fn,
         actor=actor_fn,
         critic=critic_fn,
         make_policy=make_policy,
     )
 
+
+class _MultiHeadAttentionEncoder(hk.Module):
+    def __init__(self,
+                 emb_dim: int,
+                 keys: str,
+                 mlp_layers: Iterable[int],
+                 pn_layers: Iterable[int],
+                 cnn_kernels: Iterable[int],
+                 cnn_depth: Iterable[int],
+                 act: str,
+                 norm: str,
+                 name: str = None,
+                 ):
+        super().__init__(name=name)
+        self.emb_dim = emb_dim
+        self.keys = keys
+        self.mlp_layers = mlp_layers
+        self.pn_layers = pn_layers
+        self.cnn_kernels = cnn_kernels
+        self.cnn_depth = cnn_depth
+        self.act = get_act(act)
+        self.norm = norm
+
+    def __call__(self, obs: Dict[str, jnp.ndarray]) -> jnp.ndarray:
+        obs = {
+            k: v for k, v in obs.items()
+            if re.match(self.keys, k)
+        }
+        chex.assert_type(list(obs.values()), float)
+        chex.assert_type(list(obs.values()), {1, 2, 3})
+
+        def call(feat):
+            return jax.lax.switch(
+                feat.ndim - 1,
+                [self._mlp, self._pn, self._cnn],
+                feat
+            )
+        outputs = jax.tree_util.tree_map(call, obs)
+        values = jnp.stack(jax.tree_util.tree_leaves(outputs))
+        qkv = jnp.split(values, 3, -1)
+        mha = hk.MultiHeadAttention(1, self.emb_dim, 1.)(*qkv)
+
+        return hk.Linear(self.emb_dim)(mha.reshape(-1))
+
+    def _mlp(self, x):
+        return x
+
+    def _pn(self, x):
+        pass
+
+    def _cnn(self, x):
+        return x

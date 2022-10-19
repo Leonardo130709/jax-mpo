@@ -1,4 +1,4 @@
-from typing import Callable, Tuple, Dict, Optional, TypedDict
+from typing import Callable, Tuple, Dict, TypedDict
 from collections import deque, defaultdict
 
 import dm_env
@@ -18,7 +18,7 @@ class Trajectory(TypedDict):
 def environment_loop(env: dm_env.Environment,
                      policy: Callable[[Observation], Array],
                      prev_timestep: dm_env.TimeStep,
-                     max_timesteps: int = float('inf'),
+                     max_timesteps: int = float("inf"),
                      ) -> Tuple[Trajectory, dm_env.TimeStep]:
     steps = 0
     trajectory = defaultdict(list)
@@ -31,10 +31,10 @@ def environment_loop(env: dm_env.Environment,
         timestep = env.step(action)
         done = timestep.last() or (steps >= max_timesteps)
         # o_tm1, a_tm1, r_t, discount_t
-        trajectory['observations'].append(obs)
-        trajectory['actions'].append(action)
-        trajectory['rewards'].append(timestep.reward)
-        trajectory['discounts'].append(not timestep.last())
+        trajectory["observations"].append(obs)
+        trajectory["actions"].append(action)
+        trajectory["rewards"].append(timestep.reward)
+        trajectory["discounts"].append(not timestep.last())
     # Last o_t is in the timestep.
     return trajectory, timestep
 
@@ -47,7 +47,7 @@ class NStep:
 
     def __call__(self, trajectory: Trajectory) -> Trajectory:
         # Use scipy.signals?
-        rewards, disc = map(trajectory.get, ('rewards', 'discounts'))
+        rewards, disc = map(trajectory.get, ("rewards", "discounts"))
         assert not np.all(disc[:-1])
         n_step_rewards = []
         reward = 0
@@ -59,8 +59,8 @@ class NStep:
             prev_rewards.appendleft(r)
             n_step_rewards.append(reward)
 
-        trajectory['rewards'] = n_step_rewards[::-1]
-        # trajectory['discounts'] = ?
+        trajectory["rewards"] = n_step_rewards[::-1]
+        # trajectory["discounts"] = ?
         return trajectory
 
 

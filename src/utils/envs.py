@@ -8,13 +8,17 @@ class DMC(dm_env.Environment):
                  size: tuple[int],
                  action_repeat: int,
                  ):
-        from dm_control import suite
-        domain, task = task.split('_', 1)
-        if domain == 'ball':
-            domain = 'ball_in_cup'
-            task = 'catch'
-        self._env = suite.load(domain, task,
-                               task_kwargs={'random': seed})
+        domain, task = task.split("_", 1)
+        if domain == "manip":
+            from dm_control import manipulation
+            self._env = manipulation.load(task, seed)
+        else:
+            from dm_control import suite
+            self._env = suite.load(
+                domain, task,
+                task_kwargs={"random": seed},
+                environment_kwargs={"flat_observation": True}
+            )
 
     def reset(self):
         return self._env.reset()
@@ -28,5 +32,5 @@ class DMC(dm_env.Environment):
     def observation_spec(self):
         return self._env.observation_spec()
 
-    def __getattr__(self, item):
-        return getattr(self._env, item)
+    # def __getattr__(self, item):
+    #     return getattr(self._env, item)

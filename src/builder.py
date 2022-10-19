@@ -1,5 +1,6 @@
 from typing import NamedTuple
 
+import dm_env
 import jax
 import reverb
 import tensorflow as tf
@@ -24,7 +25,7 @@ class Builder:
     def __init__(self, config: MPOConfig):
         self.cfg = config
         rng = jax.random.PRNGKey(config.seed)
-        self._actor_rng, self._learner_rng, self._env_rng =\
+        self._actor_rng, self._learner_rng, self._env_rng = \
             jax.random.split(rng, 3)
         self._env_specs = None
 
@@ -44,25 +45,25 @@ class Builder:
             next_observations=env_specs.observation_spec
         )
         trajectory_signature = to_tf_spec(trajectory_signature)
-        trajectory_signature['discounts'] = tf.TensorSpec((), dtype=bool)
+        trajectory_signature["discounts"] = tf.TensorSpec((), dtype=bool)
         weights_signature = to_tf_spec(params)
 
         tables = [
             reverb.Table(
-                name='replay_buffer',
+                name="replay_buffer",
                 sampler=reverb.selectors.Uniform(),
                 remover=reverb.selectors.Fifo(),
                 max_size=self.cfg.buffer_capacity,
                 rate_limiter=reverb.rate_limiters.SampleToInsertRatio(
                     min_size_to_sample=self.cfg.min_replay_size,
                     samples_per_insert=self.cfg.samples_per_insert,
-                    error_buffer=.1 * self.cfg.min_replay_size *\
+                    error_buffer=.1 * self.cfg.min_replay_size *
                                  self.cfg.samples_per_insert,
                 ),
                 signature=trajectory_signature
             ),
             reverb.Table(
-                name='weights',
+                name="weights",
                 sampler=reverb.selectors.Lifo(),
                 remover=reverb.selectors.Fifo(),
                 max_size=1,
@@ -72,20 +73,20 @@ class Builder:
         ]
         # TODO: use reverb checkpoint.
         server = reverb.Server(tables, self.cfg.reverb_port)
-        client = reverb.Client(f'localhost:{self.cfg.reverb_port}')
-        client.insert(params, priorities={'weights': 1})
+        client = reverb.Client(f"localhost:{self.cfg.reverb_port}")
+        client.insert(params, priorities={"weights": 1})
 
         return server
 
-    def make_dataset_iterator(self, server_address):
+    def make_dataset_iterator(self, server_address: str):
         ds: tf.data.Dataset = reverb.TrajectoryDataset.from_table_signature(
             server_address=server_address,
             table="replay_buffer",
-            max_in_flight_samples_per_worker=2*self.cfg.batch_size,
+            max_in_flight_samples_per_worker=2 * self.cfg.batch_size,
             get_signature_timeout_secs=10
         )
         ds = ds.batch(self.cfg.batch_size, drop_remainder=True)
-        ds = ds.prefetch(5)
+        ds = ds.prefetch(-1)
         return ds.as_numpy_iterator()
 
     def make_networks(self, env_specs: EnvironmentSpecs):
@@ -98,21 +99,24 @@ class Builder:
                      iterator: tf.data.Dataset,
                      client: reverb.Client
                      ):
-
         self._learner_rng, rng_key = jax.random.split(self._learner_rng)
         networks = self.make_networks(env_spec)
         return MPOLearner(rng_key, self.cfg, env_spec,
                           networks, iterator, client)
 
-    def make_actor(self, env, env_specs, client):
+    def make_actor(self,
+                   env: dm_env.Environment,
+                   env_specs: EnvironmentSpecs,
+                   client: reverb.Client
+                   ):
         self._actor_rng, rng_key = jax.random.split(self._actor_rng)
         networks = self.make_networks(env_specs)
         return Actor(rng_key, env, self.cfg, networks, client)
 
     def make_env(self):
         self._env_rng, seed = jax.random.split(self._env_rng)
-        if self.cfg.task.startswith('dmc'):
-            _, task = self.cfg.task.split('_', 1)
+        domain, task = self.cfg.task.split('_', 1)
+        if domain == "dmc":
             env = envs.DMC(task, seed.to_py(), 1, 1)
         else:
             raise NotImplementedError

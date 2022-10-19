@@ -1,31 +1,28 @@
-import multiprocessing
+import os
+import multiprocessing as mp
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 import jax
 import reverb
 
 from src.builder import Builder
 from src.config import MPOConfig
-jax.config.update('jax_disable_jit', True)
+jax.config.update("jax_disable_jit", True)
 
 
-def run_actor(config, server_address):
-    builder = Builder(config)
-    client = reverb.Client(server_address)
-    key = jax.random.PRNGKey(0)
+def run_actor(builder, server_address):
     env, env_specs = builder.make_env()
-    networks = builder.make_networks(env_specs)
-    actor = builder.make_actor(key, env, networks, client)
+    client = reverb.Client(server_address)
+    actor = builder.make_actor(env, env_specs, client)
     actor.run()
 
 
-def run_learner(config, server_address):
-    builder = Builder(config)
-    key = jax.random.PRNGKey(0)
-    client = reverb.Client(server_address)
-    env, env_specs = builder.make_env()
-    networks = builder.make_networks(env_specs)
+def run_learner(builder, server_address, env_specs):
     ds = builder.make_dataset_iterator(server_address)
-    learner = builder.make_learner(key, env_specs, ds, networks, client)
+    client = reverb.Client(server_address)
+    learner = builder.make_learner(env_specs, ds, client)
     learner.run()
 
 
@@ -38,18 +35,23 @@ def main():
     config = MPOConfig()
     builder = Builder(config)
     env, env_specs = builder.make_env()
-    address = f'localhost:{config.reverb_port}'
-    server = multiprocessing.Process(target=run_server,
-                                     args=(builder, env_specs))
+    server_address = f"localhost:{config.reverb_port}"
+    server = mp.Process(target=run_server,
+                        args=(builder, env_specs))
+    actor = mp.Process(target=run_actor,
+                       args=(builder, server_address))
+    learner = mp.Process(target=run_learner,
+                         args=(builder, server_address, env_specs)
+                         )
     server.start()
-    client = reverb.Client(address)
-    actor = builder.make_actor(env, env_specs, client)
-    ds = builder.make_dataset_iterator(address)
-    learner = builder.make_learner(env_specs, ds, client)
-    actor.run()
-    learner.run()
+    actor.start()
+    learner.start()
+
+    actor.join()
+    learner.join()
+    server.join()
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method('spawn')
+    mp.set_start_method("spawn")
     main()
