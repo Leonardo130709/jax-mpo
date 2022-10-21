@@ -287,8 +287,6 @@ class MPOLearner:
                      "next_observations")
                 )
             chex.assert_tree_shape_prefix(actions, (cfg.batch_size,))
-            # TODO: n_step calc should be done pre inserting buffer.
-            discounts *= cfg.discount ** cfg.n_step
             keys = jax.random.split(rng_key, num=cfg.batch_size+1)
             rng_key, subkeys = keys[0], keys[1:]
 
@@ -359,5 +357,4 @@ class MPOLearner:
 
     def _preprocess(self, data):
         data = jax.device_put(data)
-        data["discounts"] = data["discounts"].astype(jnp.float32)
         return self._prec.cast_to_compute(data)

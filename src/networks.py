@@ -345,8 +345,8 @@ def make_networks(cfg: MPOConfig,
 
     def make_policy(mean, std) -> tfd.Distribution:
         # TruncNormal gives wrong kl.
-        dist = tfd.Normal(mean, std)
-        # dist = tfd.TruncatedNormal(mean, std, -1, 1)
+        # dist = tfd.Normal(mean, std)
+        dist = tfd.TruncatedNormal(mean, std, -1, 1)
         return tfd.Independent(dist, 1)
 
     def split_params(params: hk.Params) -> Tuple[hk.Params]:

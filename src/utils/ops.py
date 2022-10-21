@@ -36,6 +36,7 @@ def quantile_regression_loss(predictions: Array,
                              targets: Array,
                              hubber_delta: float
                              ) -> Array:
+
     chex.assert_type([predictions, pred_quantiles, targets], float)
     chex.assert_equal_shape([predictions, pred_quantiles, targets])
     sg = jax.lax.stop_gradient
@@ -44,7 +45,10 @@ def quantile_regression_loss(predictions: Array,
     resids = targets[jnp.newaxis, :] - predictions[:, jnp.newaxis]
     ind = (resids < 0.).astype(pred_quantiles.dtype)
     weight = jnp.abs(pred_quantiles[:, jnp.newaxis] - ind)
-    loss = optax.huber_loss(resids, delta=hubber_delta) / hubber_delta
+    if hubber_delta > 0:
+        loss = optax.huber_loss(resids, delta=hubber_delta) / hubber_delta
+    else:
+        loss = jnp.abs(resids)
     loss *= sg(weight)
 
     return jnp.sum(jnp.mean(loss, axis=-1))
@@ -85,7 +89,7 @@ def temperature_loss_and_normalized_weights(
         a_max=tv_constraint
     )
     straight_through = tempered_q_values - sg(tempered_q_values)
-    tempered_q_values = clipped + straight_through
+    tempered_q_values = sg(clipped) + straight_through
     tempered_q_values = tempered_q_values.astype(jnp.float32)
 
     # tempered_q_values = sg(q_values) / temperature

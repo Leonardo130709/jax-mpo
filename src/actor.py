@@ -88,7 +88,6 @@ class Actor:
                 timestep,
                 self.cfg.seq_len,
             )
-            trajectory["observations"].append(timestep.observation)
             tr_length = len(trajectory["actions"])
             step += self.cfg.action_repeat * tr_length
             adder(trajectory)
@@ -114,18 +113,7 @@ class Actor:
                     "eval_return_std": np.std(returns),
                     "eval_duration_mean": np.mean(dur),
                 }
-                table_info = self._client.server_info()["replay_buffer"]
-                table_info = table_info.table_worker_time
-                stats = (
-                    "sampling_ms",
-                    "inserting_ms",
-                    "sleeping_ms",
-                    "waiting_for_inserts_ms"
-                )
-                reverb_info = dict()
-                for key in stats:
-                    if hasattr(table_info, key):
-                        reverb_info[f"reverb_{key}"] = getattr(table_info, key)
+                reverb_info = _get_reverb_metrics(self._client)
                 metrics.update(reverb_info)
                 # Should eval steps also add to total_steps?
                 log.write(metrics)
@@ -143,3 +131,15 @@ class Every:
             self._prev_step = step
             return True
         return False
+
+
+def _get_reverb_metrics(client: reverb.Client) -> dict[str, float]:
+    info = client.server_info()["replay_buffer"]
+    info = info.table_worker_time
+    stats = (
+        "sampling_ms",
+        "inserting_ms",
+        "sleeping_ms",
+        "waiting_for_inserts_ms"
+    )
+    return {f"reverb_{key}": getattr(info, key) for key in stats}

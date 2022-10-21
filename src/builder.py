@@ -46,7 +46,6 @@ class Builder:
             next_observations=env_specs.observation_spec
         )
         trajectory_signature = to_tf_spec(trajectory_signature)
-        trajectory_signature["discounts"] = tf.TensorSpec((), dtype=bool)
         weights_signature = to_tf_spec(params)
 
         tables = [

@@ -4,17 +4,18 @@ from collections import deque, defaultdict
 import dm_env
 import numpy as np
 import reverb
-import jax
+from jax.tree_util import tree_map
 
 Array = np.ndarray
 Observation = Dict[str, Array]
 
 
-class Trajectory(TypedDict):
+class Trajectory(TypedDict, total=False):
     observations: list[Observation]
     actions: list[Array]
     rewards: list[float]
-    discounts: list[bool]
+    discounts: list[float]
+    next_observations: list[Observation]
 
 
 def environment_loop(env: dm_env.Environment,
@@ -36,26 +37,25 @@ def environment_loop(env: dm_env.Environment,
         trajectory["observations"].append(obs)
         trajectory["actions"].append(action)
         trajectory["rewards"].append(timestep.reward)
-        trajectory["discounts"].append(not timestep.last())
-    # Last o_t is in the timestep.
+        trajectory["discounts"].append(1. - timestep.last())
+
+    trajectory["observations"].append(timestep.observation)
     return trajectory, timestep
 
 
 class NStep:
     def __init__(self, n_step: int, discount: float):
-        assert n_step == 1
         self.n_step = n_step
         self.discount = discount
         self._discount_n = discount ** n_step
 
     def __call__(self, trajectory: Trajectory) -> Trajectory:
-        # Use scipy.signals?
-        if self.n_step == 1:
-            trajectory["discounts"] *= self.discount
-            return trajectory
-
-        rewards, disc = map(trajectory.get, ("rewards", "discounts"))
-        assert not np.all(disc[:-1])
+        obs, rewards, disc = map(
+            trajectory.get,
+            ("observations", "rewards", "discounts")
+        )
+        length = len(rewards)
+        assert np.all(disc[:-1]), "Unhandled early termination."
         n_step_rewards = []
         reward = 0
         prev_rewards = deque(self.n_step * [0.], maxlen=self.n_step)
@@ -66,72 +66,66 @@ class NStep:
             prev_rewards.appendleft(r)
             n_step_rewards.append(reward)
 
-        trajectory["rewards"] = n_step_rewards[::-1]
-        # trajectory["discounts"] = ?
-        return trajectory
+        next_obs = obs[self.n_step:] + self.n_step * [obs[-1]]
+        discounts =\
+            (length - self.n_step) * [self._discount_n] + \
+            [self.discount ** i for i in range(self.n_step, 0, -1)]
+
+        res = trajectory.copy()
+        res["rewards"] = n_step_rewards[::-1]
+        res["next_observations"] = next_obs
+        res["discounts"] = discounts
+        return res
 
 
-#
-# def n_step(n_step, gamma, rewards, dones):
-#     assert not np.all(dones[:-1])
-#     n_step_rewards = []
-#     reward = 0
-#     gamma_n = gamma ** n_step
-#     prev_rewards = deque(n_step * [0.], maxlen=n_step)
-#     for r in reversed(rewards):
-#         stale_reward = prev_rewards.pop()
-#         reward = r + gamma * reward - gamma_n * stale_reward
-#         prev_rewards.appendleft(r)
-#         n_step_rewards.append(reward)
-#
-#     return n_step_rewards[::-1]
-#
+class GoalSampler:
+    def __init__(self, strategy: str):
+        self.strategy = strategy
+
+    def __call__(self, trajectory: Trajectory) -> Trajectory:
+        length = len(trajectory["actions"])
+        last_obs = trajectory["observations"][-1]
+
+        res = trajectory.copy()
+        res["goals"] = length * [last_obs]
+        res["rewards"][-1] = 1.
+
+        return res
 
 
 class Adder:
-    def __init__(self, client: reverb.Client, n_step: int = 1):
+    def __init__(self,
+                 client: reverb.Client,
+                 n_step: int = 1,
+                 discount: float = .99
+                 ):
         self._client = client
-        self._n_step = NStep(n_step, discount=.99)
+        self._n_step = NStep(n_step, discount)
 
     def __call__(self, trajectory: Trajectory):
+        trajectory = self._n_step(trajectory)
         tr_length = len(trajectory["actions"])
-        assert len(trajectory["observations"]) == tr_length + 1
 
-        with self._client.trajectory_writer(num_keep_alive_refs=2) as writer:
-            for i in range(tr_length + 1):
-                if i < tr_length:
-                    writer.append(tree_slice(
-                        i, trajectory,
-                        is_leaf=lambda x: isinstance(x, list)
-                    ))
-                else:
-                    # Here is the terminal obs.
-                    writer.append({
-                        "observations": trajectory["observations"][i]
-                    })
+        with self._client.trajectory_writer(num_keep_alive_refs=1) as writer:
+            for i in range(tr_length):
+                writer.append(tree_slice(
+                    i, trajectory,
+                    is_leaf=lambda x: isinstance(x, list)
+                ))
 
                 if i < 1:
                     continue
-
-                def slice_writer(sl, key):
-                    return tree_slice(sl, writer.history[key])
 
                 # o_tm1, a_tm1, r_t, d_t, o_t
                 writer.create_item(
                     table="replay_buffer",
                     priority=1.,
-                    trajectory={
-                        "observations": slice_writer(-2, "observations"),
-                        "actions": slice_writer(-2, "actions"),
-                        "rewards": slice_writer(-2, "rewards"),
-                        "discounts": slice_writer(-2, "discounts"),
-                        "next_observations": slice_writer(-1, "observations")
-                    }
+                    trajectory=tree_slice(-1, writer.history)
                 )
                 writer.flush(block_until_num_items=10)
 
 
 def tree_slice(sl, tree, is_leaf=None):
-    return jax.tree_util.tree_map(
+    return tree_map(
         lambda t: t[sl], tree, is_leaf=is_leaf
     )
