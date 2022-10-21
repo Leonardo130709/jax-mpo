@@ -54,27 +54,32 @@ class NStep:
             trajectory.get,
             ("observations", "rewards", "discounts")
         )
-        length = len(rewards)
         assert np.all(disc[:-1]), "Unhandled early termination."
+
+        length = len(rewards)
+        next_obs = obs[self.n_step:] + self.n_step * [obs[-1]]
+        discounts = \
+            (length - self.n_step) * [self._discount_n] + \
+            [self.discount ** i for i in range(self.n_step, 0, -1)]
+
+        res = trajectory.copy()
+        res["next_observations"] = next_obs
+        res["discounts"] = discounts
+
+        if self.n_step == 1:
+            return res
+
         n_step_rewards = []
         reward = 0
         prev_rewards = deque(self.n_step * [0.], maxlen=self.n_step)
         for r in reversed(rewards):
             stale_reward = prev_rewards.pop()
-            reward =\
+            reward = \
                 r + self.discount * reward - self._discount_n * stale_reward
             prev_rewards.appendleft(r)
             n_step_rewards.append(reward)
 
-        next_obs = obs[self.n_step:] + self.n_step * [obs[-1]]
-        discounts =\
-            (length - self.n_step) * [self._discount_n] + \
-            [self.discount ** i for i in range(self.n_step, 0, -1)]
-
-        res = trajectory.copy()
         res["rewards"] = n_step_rewards[::-1]
-        res["next_observations"] = next_obs
-        res["discounts"] = discounts
         return res
 
 
@@ -122,7 +127,7 @@ class Adder:
                     priority=1.,
                     trajectory=tree_slice(-1, writer.history)
                 )
-                writer.flush(block_until_num_items=10)
+                # writer.flush(block_until_num_items=10)
 
 
 def tree_slice(sl, tree, is_leaf=None):

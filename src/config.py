@@ -7,7 +7,7 @@ class MPOConfig(Config):
     # Algorithm
     discount: float = .99
     action_repeat: int = 1
-    n_step: int = 3
+    n_step: int = 1
     num_actions: int = 20
     num_actor_quantiles: int = 8
     num_critic_quantiles: int = 4
@@ -21,8 +21,8 @@ class MPOConfig(Config):
     init_log_alpha_std: float = 1000.
 
     # Architecture
-    activation: str = "relu"
-    normalization: str = "none"
+    activation: str = "elu"
+    normalization: str = "layer"
     stop_actor_grad: bool = True
     #   Encoder
     keys: str = r"image"
@@ -42,7 +42,7 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 64
+    samples_per_insert: int = 512
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -68,6 +68,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/img"
+    logdir: str = "logdir"
     total_steps: int = 1e6
     time_limit: int = 1e3
