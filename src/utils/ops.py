@@ -38,7 +38,8 @@ def quantile_regression_loss(predictions: Array,
                              ) -> Array:
 
     chex.assert_type([predictions, pred_quantiles, targets], float)
-    chex.assert_equal_shape([predictions, pred_quantiles, targets])
+    chex.assert_rank([predictions, pred_quantiles, targets], 1)
+    chex.assert_equal_shape([predictions, pred_quantiles])
     sg = jax.lax.stop_gradient
 
     targets = sg(targets)
