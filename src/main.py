@@ -37,6 +37,8 @@ def run_server(builder, env_specs):
 
 def main():
     config = MPOConfig()
+    os.makedirs(config.logdir)
+    config.save(config.logdir + '/config.yaml')
     builder = Builder(config)
     chex.disable_asserts()
     env, env_specs = builder.make_env()

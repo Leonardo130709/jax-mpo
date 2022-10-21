@@ -329,7 +329,6 @@ class MPOLearner:
             print(f"{name} params: {hk.data_structures.tree_size(pg)}")
 
     def run(self):
-        self._cfg.save(self._cfg.logdir + "/config.yaml")
         logger = TFSummaryLogger(logdir=self._cfg.logdir,
                                  label="train",
                                  step_key="step")

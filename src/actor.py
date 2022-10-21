@@ -56,6 +56,7 @@ class Actor:
             max_in_flight_samples_per_worker=1,
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
+        self._adder = env_loop.Adder(client, cfg.n_step, cfg.discount)
         self._params = None
         self.update_params()
 
@@ -77,7 +78,6 @@ class Actor:
         eval_policy = partial(self.act, training=False)
         train_policy = partial(self.act, training=True)
         log = TerminalOutput()
-        adder = env_loop.Adder(self._client)
 
         while step < self.cfg.total_steps:
             if should_update(step):
@@ -91,7 +91,7 @@ class Actor:
             )
             tr_length = len(trajectory["actions"])
             step += self.cfg.action_repeat * tr_length
-            adder(trajectory)
+            self._adder(trajectory)
 
             if should_eval(step):
                 returns = []
