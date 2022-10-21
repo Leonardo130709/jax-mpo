@@ -31,7 +31,8 @@ class Builder:
 
     def make_server(self, env_specs: EnvironmentSpecs):
         networks = self.make_networks(env_specs)
-        params = networks.init(jax.random.PRNGKey(0))
+        self._actor_rng, rng = jax.random.split(self._actor_rng)
+        params = networks.init(rng)
 
         def to_tf_spec(spec):
             fn = lambda sp: tf.TensorSpec(tuple(sp.shape), dtype=sp.dtype)
@@ -83,7 +84,7 @@ class Builder:
             server_address=server_address,
             table="replay_buffer",
             max_in_flight_samples_per_worker=2 * self.cfg.batch_size,
-            get_signature_timeout_secs=10
+            get_signature_timeout_secs=100
         )
         ds = ds.batch(self.cfg.batch_size, drop_remainder=True)
         ds = ds.prefetch(-1)

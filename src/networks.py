@@ -1,4 +1,4 @@
-from typing import NamedTuple, Callable, Iterable, Dict
+from typing import NamedTuple, Callable, Iterable, Dict, Tuple
 import re
 
 import jax
@@ -41,7 +41,10 @@ class NormLayer(hk.Module):
 
 
 class MLP(hk.Module):
-    """MLP w/o dropout but with preactivation normalization."""
+    """MLP w/o dropout but with preactivation normalization.
+
+    Weights and biases initialization is the haiku default: trunc_normal.
+    """
 
     def __init__(self,
                  layers: Iterable[int],
@@ -69,35 +72,55 @@ class MLP(hk.Module):
 
 class Actor(hk.Module):
     def __init__(self,
-                 action_spec,
+                 action_spec: specs.BoundedArray,
                  layers: Iterable[int],
                  act: str = "elu",
                  norm: str = "none",
-                 min_std: float = 0.1
+                 min_std: float = 0.1,
+                 init_std: float = 1.,
+                 name: str = "actor"
                  ):
-        super().__init__(name="actor")
-
-        self._discrete = isinstance(action_spec, specs.DiscreteArray)
-        if self._discrete:
-            # act_dim = action_spec.num_values
-            raise NotImplementedError
-        else:
-            output_dim = 2 * action_spec.shape[0]
-
-        self._net = MLP(tuple(layers) + (output_dim,), act, norm)
+        super().__init__(name=name)
+        self.act_dim = action_spec.shape[0]
+        self.layers = tuple(layers)
+        self.act = act
+        self.norm = norm
         self.min_std = min_std
+        self._log_init_std = jnp.log(jnp.exp(init_std - min_std) - 1.)
 
     def __call__(self, state):
         """Actor returns params instead of a distribution itself
         since tfd.Distribution doesn't play nicely with jax.vmap."""
-        out = self._net(state)
-        if not self._discrete:
-            mean, std = jnp.split(out, 2, -1)
-            mean = jnp.tanh(mean)
-            std = jax.nn.softplus(std) + self.min_std
-            return mean, std
+        mlp = MLP(self.layers, self.act, self.norm, activate_final=True)
+        out = hk.Linear(2 * self.act_dim,
+                        w_init=jnp.zeros,
+                        b_init=hk.initializers.Constant(self._log_init_std)
+                        )
+        x = mlp(state)
+        x = out(x)
+        mean, std = jnp.split(x, 2, -1)
+        mean = jnp.tanh(mean)
+        std = jax.nn.softplus(std) + self.min_std
+        return mean, std
 
-        raise NotImplementedError
+
+class Critic(hk.Module):
+    def __init__(self,
+                 layers: Iterable[int],
+                 act: str = "elu",
+                 norm: str = "none",
+                 name: str = "critic"
+                 ):
+        super().__init__(name=name)
+        self.layers = tuple(layers)
+        self.act = act
+        self.norm = norm
+
+    def __call__(self, observations, actions, tau=None):
+        chex.assert_equal_rank([observations, actions])
+        x = jnp.concatenate([observations, actions], -1)
+        mlp = MLP(self.layers + (1,), self.act, self.norm)
+        return mlp(x)
 
 
 class QuantileNetwork(hk.Module):
@@ -123,8 +146,9 @@ class DistributionalCritic(hk.Module):
                  quantile_embedding_dim: int,
                  act: str = "elu",
                  norm: str = "none",
+                 name: str = "critic"
                  ):
-        super().__init__(name="critic")
+        super().__init__(name=name)
         self.layers = tuple(layers)
         self.act = act
         self.norm = norm
@@ -135,36 +159,41 @@ class DistributionalCritic(hk.Module):
 
         x = jnp.concatenate([state, action], -1)
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
-        # w: implicit broadcasting
         x = jnp.expand_dims(x, -2)
-        x = MLP(self.layers + (1,), self.act, self.norm)(x * tau)
-        return jnp.squeeze(x, -1)
+        # warn: implicit broadcasting
+        return MLP(self.layers + (1,), self.act, self.norm)(x * tau)
 
 
-class DDCritic(DistributionalCritic):
+class CriticsEnsemble(hk.Module):
+
+    def __init__(self, n_heads: int, *args, name="critic", **kwargs):
+        super().__init__(name=name)
+        self.n_heads = n_heads
+        self._factory = lambda n: DistributionalCritic(*args, name=n, **kwargs)
+
     def __call__(self, *args, **kwargs):
-        z1 = super().__call__(*args, **kwargs)
-        z2 = super().__call__(*args, **kwargs)
-        return jnp.stack([z1, z2], -1)
+        values = []
+        for i in range(self.n_heads):
+            critic = self._factory(f"critic_{i}")
+            values.append(critic(*args, **kwargs))
+
+        return jnp.concatenate(values, -1)
 
 
 class Encoder(hk.Module):
     def __init__(self,
-                 mlp_keys: str,
-                 pn_keys: str,
-                 cnn_keys: str,
+                 keys: str,
                  mlp_layers: Iterable[int],
                  pn_layers: Iterable[int],
                  cnn_kernels: Iterable[int],
                  cnn_depth: int,
                  act: str,
                  norm: str,
-                 feature_fusion: bool = False,
+                 feature_fusion: str = "none",
+                 name: str = "encoder"
                  ):
-        super().__init__(name="encoder")
-        self.mlp_keys = mlp_keys
-        self.pn_keys = pn_keys
-        self.cnn_keys = cnn_keys
+        super().__init__(name=name)
+        self.keys = keys
         self.mlp_layers = tuple(mlp_layers)
         self.pn_layers = tuple(pn_layers)
         self.cnn_kernels = tuple(cnn_kernels)
@@ -173,40 +202,38 @@ class Encoder(hk.Module):
         self.norm = norm
         self.feature_fusion = feature_fusion
 
-    def __call__(self, obs: dict[str, jnp.ndarray]) -> jnp.ndarray:
+    def __call__(self, obs: Dict[str, jnp.ndarray]) -> jnp.ndarray:
         """Works with unbatched inputs,
-        since there is jax.vmap and hk.BatchApply."""
-        def match_concat(pattern, ndim):
-            values = [
-                val for key, val in obs.items()
-                if re.match(pattern, key) and val.ndim == ndim
-            ]
-            if values:
-                return jnp.concatenate(values, -1)
-            return None
+        since there are jax.vmap and hk.BatchApply."""
+        filtered_obs = {k: v for k, v in obs.items() if re.match(self.keys, k)}
+        chex.assert_rank(list(filtered_obs.values()), {1, 2, 3})
 
-        mlp_features = match_concat(self.mlp_keys, 1)
-        pn_features = match_concat(self.pn_keys, 2)
-        cnn_features = match_concat(self.cnn_keys, 3)
+        mlp_features, pn_features, cnn_features = _partition(filtered_obs)
+        outputs = []
 
-        if self.feature_fusion and cnn_features is not None:
-            if mlp_features is not None:
+        # TODO: simplify this
+        if mlp_features is not None:
+            if self.feature_fusion == "cnn" and cnn_features is not None:
                 mlp_features = jnp.tile(
                     mlp_features,
                     reps=cnn_features.shape[:2] + (1,)  # HWC
                 )
                 cnn_features = jnp.concatenate([cnn_features, mlp_features], -1)
-                mlp_features = None
+            elif self.feature_fusion == "pn" and pn_features is not None:
+                mlp_features = jnp.tile(
+                    mlp_features,
+                    reps=pn_features.shape[:1] + (1,)   # NC
+                )
+                pn_features = jnp.concatenate([pn_features, mlp_features], -1)
+            else:
+                outputs.append(self._mlp(mlp_features))
 
-        outputs = []
-        if mlp_features is not None:
-            outputs.append(self._mlp(mlp_features))
         if pn_features is not None:
             outputs.append(self._pn(pn_features))
         if cnn_features is not None:
             outputs.append(self._cnn(cnn_features))
         if not outputs:
-            raise ValueError(f"No valid key: {obs.keys()}")
+            raise ValueError(f"No valid {self.keys!r} in {obs.keys()}")
 
         return jnp.concatenate(outputs, -1)
 
@@ -226,22 +253,38 @@ class Encoder(hk.Module):
         )(x)
 
     def _pn(self, x):
-        *layers, out_dim = self.pn_layers
-        x = MLP(layers,
-                self.act,
-                self.norm,
-                activate_final=True
-                )(x)
-        x = jnp.max(x, axis=-2)
-        return hk.Linear(out_dim)(x)
+        x = MLP(
+            self.pn_layers,
+            self.act,
+            self.norm,
+            activate_final=True
+        )(x)
+        return jnp.max(x, -2)
+
+
+def _partition(items: Dict[str, jnp.ndarray], n: int = 3) -> list[jnp.ndarray]:
+    """Splits inputs in groups by number of dimensions."""
+    structures = list([] for _ in range(n))
+    for key, value in items.items():
+        structures[value.ndim - 1].append(value)
+
+    for i in range(n):
+        struct = structures[i]
+        if struct:
+            structures[i] = jnp.concatenate(struct, axis=-1)
+        else:
+            structures[i] = None
+
+    return structures
 
 
 class MPONetworks(NamedTuple):
     init: Callable
-    encoder: Callable
     actor: Callable
+    encoder: Callable
     critic: Callable
     make_policy: Callable
+    split_params: Callable
 
 
 def make_networks(cfg: MPOConfig,
@@ -251,9 +294,8 @@ def make_networks(cfg: MPOConfig,
     prec = jmp.get_policy(cfg.mp_policy)
     hk.mixed_precision.set_policy(Encoder, prec)
     hk.mixed_precision.set_policy(Actor, prec)
-    hk.mixed_precision.set_policy(DistributionalCritic, prec)
+    hk.mixed_precision.set_policy(CriticsEnsemble, prec)
 
-    is_discrete = isinstance(action_spec, specs.DiscreteArray)
     obs = {
         k: spec.generate_value()
         for k, spec in observation_spec.items()
@@ -263,10 +305,16 @@ def make_networks(cfg: MPOConfig,
     @hk.without_apply_rng
     @hk.multi_transform
     def model():
+        actor = Actor(
+            action_spec,
+            cfg.actor_layers,
+            cfg.activation,
+            cfg.normalization,
+            cfg.min_std,
+            cfg.init_std
+        )
         encoder = Encoder(
-            cfg.mlp_keys,
-            cfg.pn_keys,
-            cfg.cnn_keys,
+            cfg.keys,
             cfg.mlp_layers,
             cfg.pn_layers,
             cfg.cnn_kernels,
@@ -275,14 +323,8 @@ def make_networks(cfg: MPOConfig,
             cfg.normalization,
             cfg.feature_fusion
         )
-        actor = Actor(
-            action_spec,
-            cfg.actor_layers,
-            cfg.activation,
-            cfg.normalization,
-            cfg.min_std
-        )
-        critic = DistributionalCritic(
+        critic = CriticsEnsemble(
+            cfg.num_critic_heads,
             cfg.critic_layers,
             cfg.quantile_embedding_dim,
             cfg.activation,
@@ -299,77 +341,28 @@ def make_networks(cfg: MPOConfig,
             value = critic(state, action, tau)
             return state, action, value
 
-        return init, (encoder, actor, critic)
+        return init, (actor, encoder, critic)
 
-    def make_policy(*params: chex.Array) -> tfd.Distribution:
-        if is_discrete:
-            logits = params[0]
-            dist = tfd.OneHotCategorical(logits)
-        else:
-            mean, std = params
-            # TruncNormal gives wrong kl.
-            # dist = tfd.TruncatedNormal(mean, std, -1, 1)
-            dist = tfd.Normal(mean, std)
+    def make_policy(mean, std) -> tfd.Distribution:
+        # TruncNormal gives wrong kl.
+        dist = tfd.Normal(mean, std)
+        # dist = tfd.TruncatedNormal(mean, std, -1, 1)
         return tfd.Independent(dist, 1)
 
-    encoder_fn, actor_fn, critic_fn = model.apply
+    def split_params(params: hk.Params) -> Tuple[hk.Params]:
+        def fn(module, name, value):
+            modules = ("actor", "encoder", "critic")
+            name = module.split("/")[0]
+            return modules.index(name)
+
+        return hk.data_structures.partition_n(fn, params, 3)
+
+    actor_fn, encoder_fn, critic_fn = model.apply
     return MPONetworks(
         init=model.init,
         encoder=encoder_fn,
         actor=actor_fn,
         critic=critic_fn,
         make_policy=make_policy,
+        split_params=split_params,
     )
-
-
-class _MultiHeadAttentionEncoder(hk.Module):
-    def __init__(self,
-                 emb_dim: int,
-                 keys: str,
-                 mlp_layers: Iterable[int],
-                 pn_layers: Iterable[int],
-                 cnn_kernels: Iterable[int],
-                 cnn_depth: Iterable[int],
-                 act: str,
-                 norm: str,
-                 name: str = None,
-                 ):
-        super().__init__(name=name)
-        self.emb_dim = emb_dim
-        self.keys = keys
-        self.mlp_layers = mlp_layers
-        self.pn_layers = pn_layers
-        self.cnn_kernels = cnn_kernels
-        self.cnn_depth = cnn_depth
-        self.act = get_act(act)
-        self.norm = norm
-
-    def __call__(self, obs: Dict[str, jnp.ndarray]) -> jnp.ndarray:
-        obs = {
-            k: v for k, v in obs.items()
-            if re.match(self.keys, k)
-        }
-        chex.assert_type(list(obs.values()), float)
-        chex.assert_type(list(obs.values()), {1, 2, 3})
-
-        def call(feat):
-            return jax.lax.switch(
-                feat.ndim - 1,
-                [self._mlp, self._pn, self._cnn],
-                feat
-            )
-        outputs = jax.tree_util.tree_map(call, obs)
-        values = jnp.stack(jax.tree_util.tree_leaves(outputs))
-        qkv = jnp.split(values, 3, -1)
-        mha = hk.MultiHeadAttention(1, self.emb_dim, 1.)(*qkv)
-
-        return hk.Linear(self.emb_dim)(mha.reshape(-1))
-
-    def _mlp(self, x):
-        return x
-
-    def _pn(self, x):
-        pass
-
-    def _cnn(self, x):
-        return x

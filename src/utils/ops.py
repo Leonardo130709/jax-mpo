@@ -37,12 +37,12 @@ def quantile_regression_loss(predictions: Array,
                              hubber_delta: float
                              ) -> Array:
     chex.assert_type([predictions, pred_quantiles, targets], float)
-    chex.assert_rank([predictions, pred_quantiles, targets], 1)
+    chex.assert_equal_shape([predictions, pred_quantiles, targets])
     sg = jax.lax.stop_gradient
-    targets = sg(targets)
 
+    targets = sg(targets)
     resids = targets[jnp.newaxis, :] - predictions[:, jnp.newaxis]
-    ind = (resids < 0).astype(pred_quantiles.dtype)
+    ind = (resids < 0.).astype(pred_quantiles.dtype)
     weight = jnp.abs(pred_quantiles[:, jnp.newaxis] - ind)
     loss = optax.huber_loss(resids, delta=hubber_delta) / hubber_delta
     loss *= sg(weight)
@@ -55,8 +55,11 @@ def cross_entropy_loss(dist: tfd.Distribution,
                        normalized_weights: Array
                        ) -> Array:
     chex.assert_type([actions, normalized_weights], float)
-    chex.assert_rank([actions, normalized_weights], [2, 1])
+
     log_probs = dist.log_prob(actions)
+    chex.assert_rank([log_probs, normalized_weights], 1)
+    chex.assert_equal_shape([log_probs, normalized_weights])
+
     return - jnp.sum(normalized_weights * log_probs)
 
 
@@ -72,24 +75,29 @@ def temperature_loss_and_normalized_weights(
         [temperature, q_values, epsilon, tv_constraint], [0, 1, 0, 0]
     )
     sg = jax.lax.stop_gradient
-    # q_values = sg(q_values)
-    # adv = q_values - jnp.mean(q_values)
-    # tempered_q_values = jnp.clip(
-    #     adv / temperature,
-    #     a_min=-tv_constraint,
-    #     a_max=tv_constraint
-    # )
-    tempered_q_values = sg(q_values) / temperature
+
+    q_values = sg(q_values)
+    adv = q_values - jnp.mean(q_values)
+    tempered_q_values = adv / temperature
+    clipped = jnp.clip(
+        tempered_q_values,
+        a_min=-tv_constraint,
+        a_max=tv_constraint
+    )
+    straight_through = tempered_q_values - sg(tempered_q_values)
+    tempered_q_values = clipped + straight_through
     tempered_q_values = tempered_q_values.astype(jnp.float32)
+
+    # tempered_q_values = sg(q_values) / temperature
     normalized_weights = jax.nn.softmax(tempered_q_values)
     normalized_weights = sg(normalized_weights)
 
-    log_num_actions = jnp.log(q_values.size / 1.)
+    log_num_actions = jnp.log(q_values.size).astype(q_values.dtype)
     q_logsumexp = logsumexp(tempered_q_values)
     temperature_loss = epsilon + q_logsumexp - log_num_actions
     temperature_loss *= temperature
 
-    return temperature_loss.astype(q_values.dtype),\
+    return temperature_loss.astype(q_values.dtype), \
            normalized_weights.astype(q_values.dtype)
 
 
@@ -100,7 +108,7 @@ def softplus(param):
 
 @tfd.RegisterKL(tfd.TruncatedNormal, tfd.TruncatedNormal)
 def _kl_trunc_trunc(dist_a, dist_b, name=None):
-    # Duct tape.
+    # Duct tape. Returns wrong KL.
     norm_kl = tfd.kullback_leibler._DIVERGENCES[(tfd.Normal, tfd.Normal)]
     return norm_kl(dist_a, dist_b, name=name)
 

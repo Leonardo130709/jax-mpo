@@ -1,4 +1,5 @@
 import dm_env
+import PIL
 
 
 class DMC(dm_env.Environment):
@@ -32,5 +33,7 @@ class DMC(dm_env.Environment):
     def observation_spec(self):
         return self._env.observation_spec()
 
-    # def __getattr__(self, item):
-    #     return getattr(self._env, item)
+
+class UR5(dm_env.Environment):
+    def __init__(self, size):
+        from ur_env.remote import RemoteEnvClient

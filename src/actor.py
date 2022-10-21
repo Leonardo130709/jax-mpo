@@ -26,8 +26,6 @@ class Actor:
                  client: reverb.Client
                  ):
 
-        jax.config.update("jax_disable_jit", not cfg.jit)
-
         @partial(jax.jit, backend="cpu", static_argnums=(3,))
         @chex.assert_max_traces(n=2)
         def _act(params: hk.Params,
@@ -78,11 +76,7 @@ class Actor:
         eval_policy = partial(self.act, training=False)
         train_policy = partial(self.act, training=True)
         log = TerminalOutput()
-
-        def tree_slice(sl, tree, is_leaf=None):
-            return jax.tree_util.tree_map(
-                lambda t: t[sl], tree, is_leaf=is_leaf
-            )
+        adder = env_loop.Adder(self._client)
 
         while step < self.cfg.total_steps:
             if should_update(step):
@@ -94,38 +88,10 @@ class Actor:
                 timestep,
                 self.cfg.seq_len,
             )
+            trajectory["observations"].append(timestep.observation)
             tr_length = len(trajectory["actions"])
             step += self.cfg.action_repeat * tr_length
-
-            with self._client.trajectory_writer(2) as writer:
-                def slice_writer(sl, key):
-                    return tree_slice(sl, writer.history[key])
-
-                for i in range(tr_length+1):
-                    if i < tr_length:
-                        writer.append(tree_slice(
-                            i, trajectory,
-                            is_leaf=lambda x: isinstance(x, list)
-                        ))
-                    else:
-                        # Here is the terminal obs.
-                        writer.append({"observations": timestep.observation})
-
-                    if i < 1:
-                        continue
-
-                    writer.create_item(
-                        table="replay_buffer",
-                        priority=1.,
-                        trajectory={
-                            "observations": slice_writer(-2, "observations"),
-                            "actions": slice_writer(-2, "actions"),
-                            "rewards": slice_writer(-2, "rewards"),
-                            "discounts": slice_writer(-2, "discounts"),
-                            "next_observations": slice_writer(-1, "observations")
-                        }
-                    )
-                    writer.flush(block_until_num_items=10)
+            adder(trajectory)
 
             if should_eval(step):
                 returns = []
@@ -140,16 +106,29 @@ class Actor:
                     dur.append(len(tr["actions"]))
 
                 now = time.strftime("%H:%M", time.gmtime(time.time() - start))
-                eval_metrics = {
+                metrics = {
                     "step": step,
                     'time_expired': now,
                     "train_return": sum(trajectory['rewards']),
-                    "eval_returns_mean": np.mean(returns),
+                    "eval_return_mean": np.mean(returns),
                     "eval_return_std": np.std(returns),
-                    "eval_duration_mean": np.mean(dur)
+                    "eval_duration_mean": np.mean(dur),
                 }
-                # Should eval steps also count in step?
-                log.write(eval_metrics)
+                table_info = self._client.server_info()["replay_buffer"]
+                table_info = table_info.table_worker_time
+                stats = (
+                    "sampling_ms",
+                    "inserting_ms",
+                    "sleeping_ms",
+                    "waiting_for_inserts_ms"
+                )
+                reverb_info = dict()
+                for key in stats:
+                    if hasattr(table_info, key):
+                        reverb_info[f"reverb_{key}"] = getattr(table_info, key)
+                metrics.update(reverb_info)
+                # Should eval steps also add to total_steps?
+                log.write(metrics)
 
 
 class Every:
