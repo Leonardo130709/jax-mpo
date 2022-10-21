@@ -285,6 +285,7 @@ class MPONetworks(NamedTuple):
     critic: Callable
     make_policy: Callable
     split_params: Callable
+    preprocess: Callable
 
 
 def make_networks(cfg: MPOConfig,
@@ -296,11 +297,19 @@ def make_networks(cfg: MPOConfig,
     hk.mixed_precision.set_policy(Actor, prec)
     hk.mixed_precision.set_policy(CriticsEnsemble, prec)
 
-    obs = {
-        k: spec.generate_value()
-        for k, spec in observation_spec.items()
-    }
-    obs = prec.cast_to_compute(obs)
+    dummy_obs = jax.tree_util.tree_map(
+        lambda sp: sp.generate_value(), observation_spec
+    )
+
+    def preprocess(data: dict[str, jnp.ndarray]):
+        data = data.copy()
+        for key, val in data.items():
+            if val.dtype == jnp.uint8:
+                data[key] = val / 255. - 0.5
+            if "depth" in key:
+                data[key] = jnp.tanh(val / 10.)
+
+        return prec.cast_to_compute(data)
 
     @hk.without_apply_rng
     @hk.multi_transform
@@ -332,6 +341,7 @@ def make_networks(cfg: MPOConfig,
         )
 
         def init():
+            obs = preprocess(dummy_obs)
             state = encoder(obs)
             policy_params = actor(state)
             dist = make_policy(*policy_params)
@@ -365,4 +375,5 @@ def make_networks(cfg: MPOConfig,
         critic=critic_fn,
         make_policy=make_policy,
         split_params=split_params,
+        preprocess=preprocess
     )

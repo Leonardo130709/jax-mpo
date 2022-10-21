@@ -33,6 +33,7 @@ class Actor:
                  observation: jnp.ndarray,
                  training: bool
                  ) -> jnp.ndarray:
+            observation = networks.preprocess(observation)
             state = networks.encoder(params, observation)
             policy_params = networks.actor(params, state)
             dist = networks.make_policy(*policy_params)
@@ -86,7 +87,7 @@ class Actor:
                 self._env,
                 train_policy,
                 timestep,
-                self.cfg.seq_len,
+                self.cfg.max_seq_len,
             )
             tr_length = len(trajectory["actions"])
             step += self.cfg.action_repeat * tr_length

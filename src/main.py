@@ -4,8 +4,12 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
+import tensorflow as tf
+tf.config.set_visible_devices([], "GPU")
+
 import jax
 import reverb
+import chex
 
 from src.builder import Builder
 from src.config import MPOConfig
@@ -34,6 +38,7 @@ def run_server(builder, env_specs):
 def main():
     config = MPOConfig()
     builder = Builder(config)
+    chex.disable_asserts()
     env, env_specs = builder.make_env()
     server_address = f"localhost:{config.reverb_port}"
     server = mp.Process(target=run_server,

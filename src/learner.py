@@ -53,17 +53,17 @@ class MPOLearner:
         self._cfg = cfg
         self._data_iterator = train_dataset
         self._client = client
-        self._prec = jmp.get_policy(cfg.mp_policy)
+        prec = jmp.get_policy(cfg.mp_policy)
 
         _params = networks.init(subkey)
         act_dim = env_spec.action_spec.shape[0]
         _dual_params = Duals(
-            log_temperature=cfg.init_log_temperature,
+            log_temperature=jnp.array(cfg.init_log_temperature),
             log_alpha_mean=jnp.full(act_dim, cfg.init_log_alpha_mean),
             log_alpha_std=jnp.full(act_dim, cfg.init_log_alpha_std)
         )
         # to param or to compute?
-        _dual_params = self._prec.cast_to_compute(_dual_params)
+        _dual_params = prec.cast_to_compute(_dual_params)
 
         adam = functools.partial(optax.adam,
                                  b1=cfg.adam_b1,
@@ -80,7 +80,7 @@ class MPOLearner:
 
         if "16" in cfg.mp_policy:
             _loss_scale = jmp.DynamicLossScale(
-                self._prec.cast_to_output(2 ** 15)
+                prec.cast_to_output(2 ** 15)
             )
         else:
             _loss_scale = jmp.NoOpLossScale()
@@ -119,11 +119,11 @@ class MPOLearner:
 
             s_tm1 = networks.encoder(params, o_tm1)
             target_s_t = networks.encoder(target_params, o_t)
-            s_t = jax.lax.select(
-                cfg.stop_actor_grad,
-                target_s_t,
-                networks.encoder(params, o_t)
-            )
+            if cfg.stop_actor_grad:
+                s_t = target_s_t
+            else:
+                s_t = networks.encoder(params, o_t)
+
             target_policy_params = networks.actor(target_params, target_s_t)
             target_dist = networks.make_policy(*target_policy_params)
             a_t = target_dist.sample(seed=k3, sample_shape=cfg.num_actions)
@@ -131,17 +131,8 @@ class MPOLearner:
                                     cfg.num_actions, axis=0)
 
             z_t = networks.critic(target_params, target_s_t, a_t, tau_t)
-            chex.assert_shape(
-                z_t, (cfg.num_actions,
-                      cfg.num_actor_quantiles,
-                      cfg.num_critic_heads)
-            )
             z_t = jnp.min(z_t, axis=2)
             z_tm1 = networks.critic(params, s_tm1, a_tm1, tau_tm1)
-            chex.assert_shape(
-                z_tm1, (cfg.num_critic_quantiles,
-                        cfg.num_critic_heads)
-            )
             v_t = jnp.mean(z_t, axis=0)
             q_t = jnp.mean(z_t, axis=1)  # risk-neutral agent
             target_z_tm1 = sg(r_t + discount_t * v_t)
@@ -269,7 +260,7 @@ class MPOLearner:
                 step=step+1
             ), metrics
 
-        @chex.assert_max_traces(n=2)  # As first optim state is EmptyState.
+        @chex.assert_max_traces(n=1)
         def _step(mpostate: MPOState, data):
             params = mpostate.params
             target_params = mpostate.target_params
@@ -287,6 +278,8 @@ class MPOLearner:
                      "next_observations")
                 )
             chex.assert_tree_shape_prefix(actions, (cfg.batch_size,))
+            observations = networks.preprocess(observations)
+            next_observations = networks.preprocess(next_observations)
             keys = jax.random.split(rng_key, num=cfg.batch_size+1)
             rng_key, subkeys = keys[0], keys[1:]
 
@@ -336,13 +329,14 @@ class MPOLearner:
             print(f"{name} params: {hk.data_structures.tree_size(pg)}")
 
     def run(self):
+        self._cfg.save(self._cfg.logdir + "/config.yaml")
         logger = TFSummaryLogger(logdir=self._cfg.logdir,
                                  label="train",
                                  step_key="step")
         while True:
             data = next(self._data_iterator)
             info, data = data
-            data = self._preprocess(data)
+            # data = jax.device_put(data)
             self._state, metrics = self._step(self._state, data)
 
             step = self._state.step
@@ -350,11 +344,7 @@ class MPOLearner:
                 self._client.insert(self._state.params, {"weights": 1.})
 
             if step % self._cfg.log_every == 0:
-                chex.assert_rank(jax.tree_leaves(metrics), 0)
+                chex.assert_rank(list(metrics.values()), 0)
                 metrics = jax.tree_util.tree_map(float, metrics)
                 metrics["step"] = step
                 logger.write(metrics)
-
-    def _preprocess(self, data):
-        data = jax.device_put(data)
-        return self._prec.cast_to_compute(data)

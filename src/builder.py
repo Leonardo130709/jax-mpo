@@ -119,7 +119,7 @@ class Builder:
         seed = np.random.RandomState(seed)
         domain, task = self.cfg.task.split('_', 1)
         if domain == "dmc":
-            env = envs.DMC(task, seed, 1, 1)
+            env = envs.DMC(task, seed, (64, 64), 0)
         else:
             raise NotImplementedError
 
