@@ -27,7 +27,7 @@ class Actor:
                  ):
 
         @partial(jax.jit, backend="cpu")
-        @chex.assert_max_traces(n=2)
+        @chex.assert_max_traces(n=1)
         def _act(params: hk.Params,
                  key: jax.random.PRNGKey,
                  observation: jnp.ndarray,

@@ -9,7 +9,6 @@ tf.config.set_visible_devices([], "GPU")
 
 import jax
 import reverb
-import chex
 
 from src.builder import Builder
 from src.config import MPOConfig
@@ -40,21 +39,24 @@ def main():
     os.makedirs(config.logdir)
     config.save(config.logdir + '/config.yaml')
     builder = Builder(config)
-    # chex.disable_asserts()
     env, env_specs = builder.make_env()
     server_address = f"localhost:{config.reverb_port}"
     server = mp.Process(target=run_server,
                         args=(builder, env_specs))
-    actor = mp.Process(target=run_actor,
-                       args=(builder, server_address))
     learner = mp.Process(target=run_learner,
                          args=(builder, server_address, env_specs)
                          )
     server.start()
-    actor.start()
+    actors = []
+    for _ in range(10):
+        actor = mp.Process(target=run_actor,
+                           args=(builder, server_address))
+        actor.start()
+        actors.append(actor)
     learner.start()
 
-    actor.join()
+    for actor in actors:
+        actor.join()
     learner.join()
     server.join()
 

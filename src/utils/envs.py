@@ -52,14 +52,16 @@ class DMC(dm_env.Environment):
 
     def observation_spec(self):
         obs_spec = self._env.observation_spec()
-        obs_spec.update(
-            depth_map=Array(self.size + (1,), np.float32),
-            point_cloud=Array((self.pn_number, 3), np.float32),
-            image=Array(self.size + (3,), np.uint8)
-        )
+        # TODO: restore this.
+        # obs_spec.update(
+        #     depth_map=Array(self.size + (1,), np.float32),
+        #     point_cloud=Array((self.pn_number, 3), np.float32),
+        #     image=Array(self.size + (3,), np.uint8)
+        # )
         return obs_spec
 
     def _update_obs(self, obs):
+        return obs
         physics = self._env.physics
         depth_map = physics.render(*self.size, camera_id=self.camera, depth=True)
         depth_map = depth_map[..., None]

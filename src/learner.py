@@ -117,7 +117,7 @@ class MPOLearner:
             )
             tau_t = jax.random.uniform(
                 k2,
-                (cfg.num_actions, cfg.num_actor_quantiles),
+                (cfg.num_actor_quantiles,),
                 dtype=a_tm1.dtype
             )
 
@@ -131,9 +131,10 @@ class MPOLearner:
             target_policy_params = networks.actor(target_params, target_s_t)
             target_dist = networks.make_policy(*target_policy_params)
             a_t = target_dist.sample(seed=k3, sample_shape=cfg.num_actions)
-            target_s_t = jnp.repeat(target_s_t[jnp.newaxis],
-                                    cfg.num_actions, axis=0)
 
+            def expand(ar):
+                return jnp.repeat(ar[jnp.newaxis], cfg.num_actions, axis=0)
+            target_s_t, tau_t = map(expand, (target_s_t, tau_t))
             # z_t.shape : (num_actions, num_actor_quantiles, num_critic_heads)
             z_t = networks.critic(target_params, target_s_t, a_t, tau_t)
             z_t = jnp.min(z_t, axis=2)  # pessimistic ensemble
@@ -235,28 +236,6 @@ class MPOLearner:
 
             target_params = optax.periodic_update(
                 params, target_params, step, cfg.targets_update_period)
-
-            # actor_params, encoder_params, critic_params =\
-            #     networks.split_params(params)
-            # target_actor_params, target_encoder_params, target_critic_params = \
-            #     networks.split_params(target_params)
-            #
-            # target_actor_params = optax.periodic_update(
-            #     actor_params,
-            #     target_actor_params,
-            #     step,
-            #     cfg.target_actor_update_period
-            # )
-            # (target_encoder_params, target_critic_params) =\
-            #     optax.periodic_update(
-            #         (encoder_params, critic_params),
-            #         (target_encoder_params, target_critic_params),
-            #         step,
-            #         cfg.target_critic_update_period
-            #     )
-            # target_params.update(target_actor_params)
-            # target_params.update(target_encoder_params)
-            # target_params.update(target_critic_params)
 
             return mpostate._replace(
                 params=params,

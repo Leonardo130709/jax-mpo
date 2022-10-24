@@ -9,16 +9,16 @@ class MPOConfig(Config):
     action_repeat: int = 1
     n_step: int = 1
     num_actions: int = 20
-    num_actor_quantiles: int = 32
-    num_critic_quantiles: int = 1
+    num_actor_quantiles: int = 16
+    num_critic_quantiles: int = 2
+    tv_constraint: float = float("inf")
+    hubber_delta: float = 0.
     epsilon_eta: float = .1
     epsilon_mean: float = 1e-2
     epsilon_std: float = 1e-4
-    tv_constraint: float = 1.
-    hubber_delta: float = .1
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
-    init_log_alpha_std: float = 1000.
+    init_log_alpha_std: float = 100.
 
     # Architecture
     activation: str = "elu"
@@ -33,9 +33,9 @@ class MPOConfig(Config):
     cnn_depth: int = 48
     feature_fusion: str = "cnn"
     #   Actor
-    actor_layers: tuple[int] = (256, 256)
+    actor_layers: tuple[int] = (128, 128)
     min_std: float = .1
-    init_std: float = 1.
+    init_std: float = .1
     #   Critic
     num_critic_heads: int = 1
     critic_layers: tuple[int] = (512, 512)
@@ -56,9 +56,7 @@ class MPOConfig(Config):
     adam_b1: float = .9
     adam_b2: float = .999
     adam_eps: float = 1e-8
-    # target_actor_update_period: int = 25
-    # target_critic_update_period: int = 100
-    targets_update_period: int = 100
+    targets_update_period: int = 50
     max_seq_len: int = 50
     eval_every: int = 1e4
     log_every: int = 1e2
@@ -70,6 +68,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/tmp"
+    logdir: str = "/dev/null"
     total_steps: int = 1e6
     time_limit: int = 1e3

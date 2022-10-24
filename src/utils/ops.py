@@ -2,10 +2,9 @@
 from typing import Tuple
 
 import jax
+import chex
 import jax.numpy as jnp
 from jax.scipy.special import logsumexp
-import chex
-import optax
 import tensorflow_probability.substrates.jax.distributions as tfd
 
 Array = jnp.ndarray
@@ -47,10 +46,13 @@ def quantile_regression_loss(predictions: Array,
     resids = targets[jnp.newaxis, :] - predictions[:, jnp.newaxis]
     ind = (resids < 0).astype(pred_quantiles.dtype)
     weight = jnp.abs(pred_quantiles[:, jnp.newaxis] - ind)
+    abs_errors = jnp.abs(resids)
     if hubber_delta > 0:
-        loss = optax.huber_loss(resids, delta=hubber_delta) / hubber_delta
+        quadratic = jnp.minimum(abs_errors, hubber_delta)
+        linear = abs_errors - quadratic
+        loss = 0.5 * quadratic ** 2 / hubber_delta + linear
     else:
-        loss = jnp.abs(resids)
+        loss = abs_errors
     loss *= sg(weight)
 
     return jnp.sum(jnp.mean(loss, axis=-1))

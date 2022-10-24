@@ -1,10 +1,14 @@
 from typing import Callable, Tuple, Dict, TypedDict
 from collections import deque, defaultdict
+import re
+import copy
 
 import dm_env
 import numpy as np
 import reverb
 from jax.tree_util import tree_map
+
+from src import GOAL_KEY
 
 Action = Array = np.ndarray
 Observation = Dict[str, Array]
@@ -43,59 +47,74 @@ def environment_loop(env: dm_env.Environment,
     return trajectory, timestep
 
 
-class NStep:
-    def __init__(self, n_step: int, discount: float):
-        self.n_step = n_step
-        self.discount = discount
-        self._discount_n = discount ** n_step
+def n_step_fn(trajectory: Trajectory,
+              n_step: int = 1,
+              discount: float = .99
+              ) -> Trajectory:
+    """Computes N-step rewards for the trajectory."""
+    obs, rewards, disc = map(
+        trajectory.get,
+        ("observations", "rewards", "discounts")
+    )
+    assert np.all(disc[:-1]), "Unhandled early termination."
 
-    def __call__(self, trajectory: Trajectory) -> Trajectory:
-        obs, rewards, disc = map(
-            trajectory.get,
-            ("observations", "rewards", "discounts")
-        )
-        assert np.all(disc[:-1]), "Unhandled early termination."
+    length = len(rewards)
+    discount_n = discount ** n_step
+    next_obs = obs[n_step:] + n_step * [obs[-1]]
+    discounts = \
+        (length - n_step) * [discount_n] + \
+        [discount ** i for i in range(n_step, 0, -1)]
 
-        length = len(rewards)
-        next_obs = obs[self.n_step:] + self.n_step * [obs[-1]]
-        discounts = \
-            (length - self.n_step) * [self._discount_n] + \
-            [self.discount ** i for i in range(self.n_step, 0, -1)]
+    res = trajectory.copy()
+    res["next_observations"] = next_obs
+    res["discounts"] = discounts
 
-        res = trajectory.copy()
-        res["next_observations"] = next_obs
-        res["discounts"] = discounts
-
-        if self.n_step == 1:
-            return res
-
-        n_step_rewards = []
-        reward = 0
-        prev_rewards = deque(self.n_step * [0.], maxlen=self.n_step)
-        for r in reversed(rewards):
-            stale_reward = prev_rewards.pop()
-            reward = \
-                r + self.discount * reward - self._discount_n * stale_reward
-            prev_rewards.appendleft(r)
-            n_step_rewards.append(reward)
-
-        res["rewards"] = n_step_rewards[::-1]
+    if n_step == 1:
         return res
 
+    n_step_rewards = []
+    reward = 0
+    prev_rewards = deque(n_step * [0.], maxlen=n_step)
+    for r in reversed(rewards):
+        stale_reward = prev_rewards.pop()
+        reward = \
+            r + discount * reward - discount_n * stale_reward
+        prev_rewards.appendleft(r)
+        n_step_rewards.append(reward)
 
-class GoalSampler:
-    def __init__(self, strategy: str):
-        self.strategy = strategy
+    res["rewards"] = n_step_rewards[::-1]
+    return res
 
-    def __call__(self, trajectory: Trajectory) -> Trajectory:
-        length = len(trajectory["actions"])
-        last_obs = trajectory["observations"][-1]
 
-        res = trajectory.copy()
-        res["goals"] = length * [last_obs]
-        res["rewards"][-1] = 1.
+def goal_augmentation(trajectory: Trajectory,
+                      goal_key: str,
+                      strategy: str = "none",
+                      amount: int = 1,
+                      ) -> list[Trajectory]:
+    """Augments input trajectory with N additional goals."""
+    test_obs = trajectory["observations"][0]
+    if goal_key not in test_obs.keys():
+        candidates = list(filter(
+            lambda key: re.match(goal_key, key),
+            test_obs.keys()
+        ))
+        assert len(candidates) == 1,\
+            f"Wrong key regex {goal_key!r}: {candidates}"
+        goal_key = candidates.pop()
 
-        return res
+    trajectories = [trajectory]
+    if strategy == "last":
+        hindsight_goal = trajectory["observations"][-1][goal_key]
+        aug = copy.deepcopy(trajectory)
+        for obs in aug["observations"]:
+            obs[GOAL_KEY] = hindsight_goal
+        aug["rewards"][-1] = 1.
+        trajectories.extend(amount * [aug])
+    else:
+        # TODO: implement random strategies properly.
+        pass
+
+    return trajectories
 
 
 class Adder:
@@ -105,14 +124,20 @@ class Adder:
                  discount: float = .99
                  ):
         self._client = client
-        self._n_step = NStep(n_step, discount)
+        self.n_step = n_step
+        self.discount = discount
+        self._n_step_fn = lambda tr: n_step_fn(tr, n_step, discount)
+        self._augmentation_fn = lambda tr: [tr]
 
     def __call__(self, trajectory: Trajectory):
-        trajectory = self._n_step(trajectory)
-        tr_length = len(trajectory["actions"])
+        trajectories = self._augmentation_fn(trajectory)
+        trajectories = map(self._n_step_fn, trajectories)
+        for tr in trajectories:
+            self._insert(tr)
 
+    def _insert(self, trajectory: Trajectory):
         with self._client.trajectory_writer(num_keep_alive_refs=1) as writer:
-            for i in range(tr_length):
+            for i in range(len(trajectory["actions"])):
                 writer.append(
                     tree_slice(
                         i, trajectory,
