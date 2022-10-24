@@ -26,7 +26,7 @@ class Actor:
                  client: reverb.Client
                  ):
 
-        @partial(jax.jit, backend="cpu", static_argnums=(3,))
+        @partial(jax.jit, backend="cpu")
         @chex.assert_max_traces(n=2)
         def _act(params: hk.Params,
                  key: jax.random.PRNGKey,
@@ -37,10 +37,11 @@ class Actor:
             state = networks.encoder(params, observation)
             policy_params = networks.actor(params, state)
             dist = networks.make_policy(*policy_params)
-            if training:
-                action = dist.sample(seed=key)
-            else:
-                action = dist.distribution.mean()
+            action = jax.lax.select(
+                training,
+                dist.sample(seed=key),
+                dist.distribution.mean()
+            )
             action = jnp.clip(action, a_min=-1, a_max=1)
             return action
 
@@ -141,6 +142,11 @@ def _get_reverb_metrics(client: reverb.Client) -> dict[str, float]:
         "sampling_ms",
         "inserting_ms",
         "sleeping_ms",
-        "waiting_for_inserts_ms"
+        "waiting_for_sampling_ms",
+        "waiting_for_inserts_ms",
     )
-    return {f"reverb_{key}": getattr(info, key) for key in stats}
+    reverb_info = {}
+    for key in stats:
+        if hasattr(info, key):
+            reverb_info[f"reverb_{key}"] = getattr(info, key)
+    return reverb_info

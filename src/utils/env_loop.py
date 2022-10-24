@@ -6,20 +6,20 @@ import numpy as np
 import reverb
 from jax.tree_util import tree_map
 
-Array = np.ndarray
+Action = Array = np.ndarray
 Observation = Dict[str, Array]
 
 
 class Trajectory(TypedDict, total=False):
     observations: list[Observation]
-    actions: list[Array]
+    actions: list[Action]
     rewards: list[float]
     discounts: list[float]
     next_observations: list[Observation]
 
 
 def environment_loop(env: dm_env.Environment,
-                     policy: Callable[[Observation], Array],
+                     policy: Callable[[Observation], Action],
                      prev_timestep: dm_env.TimeStep,
                      max_timesteps: int = float("inf"),
                      ) -> Tuple[Trajectory, dm_env.TimeStep]:
@@ -113,21 +113,19 @@ class Adder:
 
         with self._client.trajectory_writer(num_keep_alive_refs=1) as writer:
             for i in range(tr_length):
-                writer.append(tree_slice(
-                    i, trajectory,
-                    is_leaf=lambda x: isinstance(x, list)
-                ))
-
-                if i < 1:
-                    continue
-
+                writer.append(
+                    tree_slice(
+                        i, trajectory,
+                        is_leaf=lambda x: isinstance(x, list)
+                    )
+                )
                 # o_tm1, a_tm1, r_t, d_t, o_t
                 writer.create_item(
                     table="replay_buffer",
                     priority=1.,
                     trajectory=tree_slice(-1, writer.history)
                 )
-                # writer.flush(block_until_num_items=10)
+                writer.flush(block_until_num_items=20)
 
 
 def tree_slice(sl, tree, is_leaf=None):

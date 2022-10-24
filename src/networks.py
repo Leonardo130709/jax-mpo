@@ -160,7 +160,7 @@ class DistributionalCritic(hk.Module):
         x = jnp.concatenate([state, action], -1)
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
         x = jnp.expand_dims(x, -2)
-        # warn: implicit broadcasting
+        # warn: implicit broadcast.
         return MLP(self.layers + (1,), self.act, self.norm)(x * tau)
 
 
@@ -183,6 +183,7 @@ class CriticsEnsemble(hk.Module):
 class Encoder(hk.Module):
     def __init__(self,
                  keys: str,
+                 emb_dim: int,
                  mlp_layers: Iterable[int],
                  pn_layers: Iterable[int],
                  cnn_kernels: Iterable[int],
@@ -194,6 +195,7 @@ class Encoder(hk.Module):
                  ):
         super().__init__(name=name)
         self.keys = keys
+        self.emb_dim = emb_dim
         self.mlp_layers = tuple(mlp_layers)
         self.pn_layers = tuple(pn_layers)
         self.cnn_kernels = tuple(cnn_kernels)
@@ -229,13 +231,20 @@ class Encoder(hk.Module):
                 outputs.append(self._mlp(mlp_features))
 
         if pn_features is not None:
+            # TODO: assert there is only one pcd in input.
             outputs.append(self._pn(pn_features))
         if cnn_features is not None:
             outputs.append(self._cnn(cnn_features))
         if not outputs:
             raise ValueError(f"No valid {self.keys!r} in {obs.keys()}")
 
-        return jnp.concatenate(outputs, -1)
+        features = jnp.concatenate(outputs, -1)
+        emb = MLP((self.emb_dim,),
+                  act=self.act,
+                  norm=self.norm,
+                  activate_final=True)
+
+        return emb(features)
 
     def _cnn(self, x):
         for kernel in self.cnn_kernels:
@@ -262,7 +271,9 @@ class Encoder(hk.Module):
         return jnp.max(x, -2)
 
 
-def _partition(items: Dict[str, jnp.ndarray], n: int = 3) -> list[jnp.ndarray]:
+def _partition(items: Dict[str, jnp.ndarray],
+               n: int = 3
+               ) -> list[jnp.ndarray | None]:
     """Splits inputs in groups by number of dimensions."""
     structures = list([] for _ in range(n))
     for key, value in items.items():
@@ -298,7 +309,8 @@ def make_networks(cfg: MPOConfig,
     hk.mixed_precision.set_policy(CriticsEnsemble, prec)
 
     dummy_obs = jax.tree_util.tree_map(
-        lambda sp: sp.generate_value(), observation_spec
+        lambda sp: sp.generate_value(), observation_spec,
+        is_leaf=lambda x: isinstance(x, specs.Array)
     )
 
     def preprocess(data: dict[str, jnp.ndarray]):
@@ -324,6 +336,7 @@ def make_networks(cfg: MPOConfig,
         )
         encoder = Encoder(
             cfg.keys,
+            cfg.encoder_emb_dim,
             cfg.mlp_layers,
             cfg.pn_layers,
             cfg.cnn_kernels,

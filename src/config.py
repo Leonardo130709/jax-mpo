@@ -9,13 +9,13 @@ class MPOConfig(Config):
     action_repeat: int = 1
     n_step: int = 1
     num_actions: int = 20
-    num_actor_quantiles: int = 8
-    num_critic_quantiles: int = 4
+    num_actor_quantiles: int = 32
+    num_critic_quantiles: int = 1
     epsilon_eta: float = .1
-    epsilon_mean: float = 2.5e-3
-    epsilon_std: float = 1e-6
+    epsilon_mean: float = 1e-2
+    epsilon_std: float = 1e-4
     tv_constraint: float = 1.
-    hubber_delta: float = 0.
+    hubber_delta: float = .1
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
@@ -25,7 +25,8 @@ class MPOConfig(Config):
     normalization: str = "layer"
     stop_actor_grad: bool = True
     #   Encoder
-    keys: str = r"image"
+    keys: str = r"observations"
+    encoder_emb_dim: int = 64
     mlp_layers: tuple[int] = ()
     pn_layers: tuple[int] = (64, 256, 512)
     cnn_kernels: tuple[int] = (4, 4, 4, 4)
@@ -42,7 +43,7 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 512
+    samples_per_insert: int = 128
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -55,8 +56,9 @@ class MPOConfig(Config):
     adam_b1: float = .9
     adam_b2: float = .999
     adam_eps: float = 1e-8
-    target_actor_update_period: int = 25
-    target_critic_update_period: int = 100
+    # target_actor_update_period: int = 25
+    # target_critic_update_period: int = 100
+    targets_update_period: int = 100
     max_seq_len: int = 50
     eval_every: int = 1e4
     log_every: int = 1e2
@@ -68,6 +70,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir"
+    logdir: str = "logdir/tmp"
     total_steps: int = 1e6
     time_limit: int = 1e3

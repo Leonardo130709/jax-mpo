@@ -19,6 +19,7 @@ def scaled_and_dual_loss(loss: Array,
     """Lagrange multiplier loss."""
     chex.assert_rank(epsilon, 0)
     chex.assert_type([loss, duals], float)
+    chex.assert_is_broadcastable(loss.shape, duals.shape)
 
     sg = jax.lax.stop_gradient
     scaled_loss = sg(duals) * loss
@@ -36,7 +37,7 @@ def quantile_regression_loss(predictions: Array,
                              targets: Array,
                              hubber_delta: float
                              ) -> Array:
-
+    """Distributional critic loss."""
     chex.assert_type([predictions, pred_quantiles, targets], float)
     chex.assert_rank([predictions, pred_quantiles, targets], 1)
     chex.assert_equal_shape([predictions, pred_quantiles])
@@ -44,7 +45,7 @@ def quantile_regression_loss(predictions: Array,
 
     targets = sg(targets)
     resids = targets[jnp.newaxis, :] - predictions[:, jnp.newaxis]
-    ind = (resids < 0.).astype(pred_quantiles.dtype)
+    ind = (resids < 0).astype(pred_quantiles.dtype)
     weight = jnp.abs(pred_quantiles[:, jnp.newaxis] - ind)
     if hubber_delta > 0:
         loss = optax.huber_loss(resids, delta=hubber_delta) / hubber_delta
@@ -62,6 +63,7 @@ def cross_entropy_loss(dist: tfd.Distribution,
     chex.assert_type([actions, normalized_weights], float)
 
     log_probs = dist.log_prob(actions)
+
     chex.assert_rank([log_probs, normalized_weights], 1)
     chex.assert_equal_shape([log_probs, normalized_weights])
 
@@ -74,7 +76,7 @@ def temperature_loss_and_normalized_weights(
         epsilon: float,
         tv_constraint: float
 ) -> Tuple[Array, Array]:
-    """Direct dual constraint as a part of MPO loss."""
+    """Direct dual constraint as a part of CMPO loss."""
     chex.assert_type([temperature, q_values, epsilon, tv_constraint], float)
     chex.assert_rank(
         [temperature, q_values, epsilon, tv_constraint], [0, 1, 0, 0]
@@ -93,11 +95,10 @@ def temperature_loss_and_normalized_weights(
     tempered_q_values = sg(clipped) + straight_through
     tempered_q_values = tempered_q_values.astype(jnp.float32)
 
-    # tempered_q_values = sg(q_values) / temperature
     normalized_weights = jax.nn.softmax(tempered_q_values)
     normalized_weights = sg(normalized_weights)
 
-    log_num_actions = jnp.log(q_values.size).astype(q_values.dtype)
+    log_num_actions = jnp.log(q_values.size)
     q_logsumexp = logsumexp(tempered_q_values)
     temperature_loss = epsilon + q_logsumexp - log_num_actions
     temperature_loss *= temperature

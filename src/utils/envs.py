@@ -1,3 +1,5 @@
+import os
+
 import dm_env
 from dm_env.specs import Array
 import numpy as np
@@ -12,6 +14,7 @@ class DMC(dm_env.Environment):
                  camera: str | int = 0,
                  pn_number: int = 500,
                  ):
+        os.environ["MUJOCO_GL"] = "egl"
         from src.utils.dm_control_pcd_generator import PointCloudGenerator
 
         domain, task = task.split("_", 1)

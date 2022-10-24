@@ -62,8 +62,7 @@ class MPOLearner:
             log_alpha_mean=jnp.full(act_dim, cfg.init_log_alpha_mean),
             log_alpha_std=jnp.full(act_dim, cfg.init_log_alpha_std)
         )
-        # to param or to compute?
-        _dual_params = prec.cast_to_compute(_dual_params)
+        _dual_params = prec.cast_to_output(_dual_params)
 
         adam = functools.partial(optax.adam,
                                  b1=cfg.adam_b1,
@@ -84,6 +83,11 @@ class MPOLearner:
             )
         else:
             _loss_scale = jmp.NoOpLossScale()
+
+        param_groups = networks.split_params(_params)
+        names = ("Actor", "Encoder", "Critic")
+        for pg, name in zip(param_groups, names):
+            print(f"{name} params: {hk.data_structures.tree_size(pg)}")
 
         self._state = MPOState(
             params=_params,
@@ -130,12 +134,15 @@ class MPOLearner:
             target_s_t = jnp.repeat(target_s_t[jnp.newaxis],
                                     cfg.num_actions, axis=0)
 
+            # z_t.shape : (num_actions, num_actor_quantiles, num_critic_heads)
             z_t = networks.critic(target_params, target_s_t, a_t, tau_t)
-            z_t = jnp.min(z_t, axis=2)
+            z_t = jnp.min(z_t, axis=2)  # pessimistic ensemble
+            # z_tm1.shape: (num_critic_quantiles, num_critic_heads)
             z_tm1 = networks.critic(params, s_tm1, a_tm1, tau_tm1)
             v_t = jnp.mean(z_t, axis=0)
             q_t = jnp.mean(z_t, axis=1)  # risk-neutral agent
             target_z_tm1 = sg(r_t + discount_t * v_t)
+
             critic_loss_fn = jax.vmap(
                 ops.quantile_regression_loss,
                 in_axes=(1, None, None, None)
@@ -173,7 +180,6 @@ class MPOLearner:
                 kl_loss, dual_loss = ops.scaled_and_dual_loss(
                     kl, duals, epsilon, per_dimension=True
                 )
-                chex.assert_rank([ce_loss, kl_loss, dual_loss], 0)
                 loss = ce_loss + kl_loss + dual_loss
                 pfx = lambda k: f"{prefix}_{k}"
                 met = {
@@ -188,7 +194,6 @@ class MPOLearner:
                 fixed_std, alpha_mean, cfg.epsilon_mean, prefix="mean")
             std_loss, metrics_std = policy_loss(
                 fixed_mean, alpha_std, cfg.epsilon_std, prefix="std")
-            chex.assert_rank([critic_loss, mean_loss, std_loss, temperature_loss], 0)
             total_loss = critic_loss + mean_loss + std_loss + temperature_loss
 
             metrics = dict(
@@ -216,41 +221,43 @@ class MPOLearner:
             optim_state = mpostate.optim_state
             dual_optim_state = mpostate.dual_optim_state
             step = mpostate.step
+
             params_grads, dual_grads = grads
 
             params_update, optim_state = optim.update(
-                params_grads, optim_state)
+                params_grads, optim_state
+            )
             dual_update, dual_optim_state = dual_optim.update(
-                dual_grads, dual_optim_state)
+                dual_grads, dual_optim_state
+            )
             params = optax.apply_updates(params, params_update)
             dual_params = optax.apply_updates(dual_params, dual_update)
 
-            actor_params, encoder_params, critic_params =\
-                networks.split_params(params)
-            target_actor_params, target_encoder_params, target_critic_params = \
-                networks.split_params(target_params)
+            target_params = optax.periodic_update(
+                params, target_params, step, cfg.targets_update_period)
 
-            target_actor_params = optax.periodic_update(
-                actor_params,
-                target_actor_params,
-                step,
-                cfg.target_actor_update_period
-            )
-            (target_encoder_params, target_critic_params) =\
-                optax.periodic_update(
-                    (encoder_params, critic_params),
-                    (target_encoder_params, target_critic_params),
-                    step,
-                    cfg.target_critic_update_period
-                )
-            target_params.update(target_actor_params)
-            target_params.update(target_encoder_params)
-            target_params.update(target_critic_params)
+            # actor_params, encoder_params, critic_params =\
+            #     networks.split_params(params)
+            # target_actor_params, target_encoder_params, target_critic_params = \
+            #     networks.split_params(target_params)
+            #
+            # target_actor_params = optax.periodic_update(
+            #     actor_params,
+            #     target_actor_params,
+            #     step,
+            #     cfg.target_actor_update_period
+            # )
+            # (target_encoder_params, target_critic_params) =\
+            #     optax.periodic_update(
+            #         (encoder_params, critic_params),
+            #         (target_encoder_params, target_critic_params),
+            #         step,
+            #         cfg.target_critic_update_period
+            #     )
+            # target_params.update(target_actor_params)
+            # target_params.update(target_encoder_params)
+            # target_params.update(target_critic_params)
 
-            metrics = dict(
-                params_grad_norm=optax.global_norm(params_grads),
-                dual_grad_norm=optax.global_norm(dual_grads),
-            )
             return mpostate._replace(
                 params=params,
                 target_params=target_params,
@@ -258,7 +265,7 @@ class MPOLearner:
                 optim_state=optim_state,
                 dual_optim_state=dual_optim_state,
                 step=step+1
-            ), metrics
+            )
 
         @chex.assert_max_traces(n=1)
         def _step(mpostate: MPOState, data):
@@ -271,30 +278,24 @@ class MPOLearner:
             observations, actions, rewards, discounts, next_observations =\
                 map(
                     data.get,
-                    ("observations",
-                     "actions",
-                     "rewards",
-                     "discounts",
-                     "next_observations")
+                    ("observations", "actions", "rewards",
+                     "discounts", "next_observations")
                 )
             chex.assert_tree_shape_prefix(actions, (cfg.batch_size,))
             observations = networks.preprocess(observations)
             next_observations = networks.preprocess(next_observations)
+            actions, rewards, discounts =\
+                prec.cast_to_compute((actions, rewards, discounts))
+
             keys = jax.random.split(rng_key, num=cfg.batch_size+1)
             rng_key, subkeys = keys[0], keys[1:]
 
             in_axes = 4 * (None,) + 6 * (0,)
-            args = (
+            grad_fn = jax.grad(mpo_loss, argnums=(0, 1), has_aux=True)
+            grads, metrics = jax.vmap(grad_fn, in_axes=in_axes)(
                 params, dual_params, target_params, loss_scale, subkeys,
                 observations, actions, rewards, discounts, next_observations
             )
-            in_axes = tuple(
-                jax.tree_util.tree_map(lambda t: axis, val)
-                for axis, val in zip(in_axes, args)
-            )
-
-            grad_fn = jax.grad(mpo_loss, argnums=(0, 1), has_aux=True)
-            grads, metrics = jax.vmap(grad_fn, in_axes=in_axes)(*args)
             grads, metrics = jax.tree_util.tree_map(
                 lambda t: jnp.mean(t, axis=0),
                 (grads, metrics)
@@ -303,18 +304,16 @@ class MPOLearner:
             grads_finite = jmp.all_finite(grads)
             loss_scale = loss_scale.adjust(grads_finite)
 
-            met_placeholder = {
-                "params_grad_norm": float("inf"),
-                "dual_grad_norm": float("inf"),
-            }
-            mpostate, met = jmp.select_tree(
+            mpostate = jmp.select_tree(
                 grads_finite,
                 update_step(mpostate, grads),
-                (mpostate, met_placeholder)
+                mpostate
             )
             metrics.update(loss_scale=loss_scale.loss_scale,
                            grads_finite=grads_finite,
-                           **met)
+                           params_grad_norm=optax.global_norm(grads[0]),
+                           dual_grad_norm=optax.global_norm(grads[1]),
+                           )
 
             return mpostate._replace(
                 rng_key=rng_key,
@@ -323,11 +322,6 @@ class MPOLearner:
 
         self._step = jax.jit(_step)
 
-        param_groups = networks.split_params(_params)
-        names = ("Actor", "Encoder", "Critic")
-        for pg, name in zip(param_groups, names):
-            print(f"{name} params: {hk.data_structures.tree_size(pg)}")
-
     def run(self):
         logger = TFSummaryLogger(logdir=self._cfg.logdir,
                                  label="train",
@@ -335,7 +329,6 @@ class MPOLearner:
         while True:
             data = next(self._data_iterator)
             info, data = data
-            # data = jax.device_put(data)
             self._state, metrics = self._step(self._state, data)
 
             step = self._state.step
