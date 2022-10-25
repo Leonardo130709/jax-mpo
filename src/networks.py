@@ -10,7 +10,6 @@ import tensorflow_probability.substrates.jax as tfp
 from dm_env import specs
 
 from src.config import MPOConfig
-from src import GOAL_KEY
 
 tfd = tfp.distributions
 
@@ -204,44 +203,51 @@ class Encoder(hk.Module):
     def __call__(self, obs: Dict[str, jnp.ndarray]) -> jnp.ndarray:
         """Works with unbatched inputs,
         since there are jax.vmap and hk.BatchApply."""
-        filtered_obs = {k: v for k, v in obs.items() if re.match(self.keys, k)}
-        chex.assert_rank(list(filtered_obs.values()), {1, 2, 3})
-
-        mlp_features, pn_features, cnn_features = _partition(filtered_obs)
+        chex.assert_rank(list(obs.values()), {1, 2, 3})
+        mlp_features, pn_features, cnn_features = ndim_partition(
+            {k: v for k, v in obs.items() if re.match(self.keys, k)}
+        )
         outputs = []
 
-        # TODO: simplify this
-        if mlp_features is not None:
-            if self.feature_fusion == "cnn" and cnn_features is not None:
-                mlp_features = jnp.tile(
+        if mlp_features:
+            mlp_features = list(mlp_features.values())
+            mlp_features = jnp.concatenate(mlp_features, -1)
+            # Also fuse these features with the multidimensional inputs.
+            fuse_with = filter(
+                lambda k: re.match(self.feature_fusion, k), obs.keys()
+            )
+            fuse_with = tuple(fuse_with)
+            sources = [pn_features, cnn_features]
+            for key in fuse_with:
+                source_ndim = obs[key].ndim
+                chex.assert_scalar_non_negative(source_ndim - 2)
+                source = sources[source_ndim - 2]
+                feat = source[key]
+                tiled_feat = jnp.tile(
                     mlp_features,
-                    reps=cnn_features.shape[:2] + (1,)  # HWC
+                    reps=feat.shape[:-1] + (1,)
                 )
-                cnn_features = jnp.concatenate([cnn_features, mlp_features], -1)
-            elif self.feature_fusion == "pn" and pn_features is not None:
-                mlp_features = jnp.tile(
-                    mlp_features,
-                    reps=pn_features.shape[:1] + (1,)   # NC
+                source[key] = jnp.concatenate(
+                    [feat, tiled_feat], -1
                 )
-                pn_features = jnp.concatenate([pn_features, mlp_features], -1)
-            else:
+
+            if not fuse_with:
                 outputs.append(self._mlp(mlp_features))
 
-        if pn_features is not None:
-            # TODO: assert there is only one pcd in input.
-            outputs.append(self._pn(pn_features))
-        if cnn_features is not None:
-            outputs.append(self._cnn(cnn_features))
+        for pcd in pn_features.values():
+            outputs.append(self._pn(pcd))
+        for image in cnn_features.values():
+            outputs.append(self._cnn(image))
         if not outputs:
             raise ValueError(f"No valid {self.keys!r} in {obs.keys()}")
 
-        features = jnp.concatenate(outputs, -1)
+        state = jnp.concatenate(outputs, -1)
         emb = MLP((self.emb_dim,),
                   act=self.act,
                   norm=self.norm,
                   activate_final=True)
 
-        return emb(features)
+        return emb(state)
 
     def _cnn(self, x):
         for kernel in self.cnn_kernels:
@@ -268,20 +274,14 @@ class Encoder(hk.Module):
         return jnp.max(x, -2)
 
 
-def _partition(items: Dict[str, jnp.ndarray],
-               n: int = 3
-               ) -> list[jnp.ndarray | None]:
+def ndim_partition(items: Dict[str, jnp.ndarray],
+                   n: int = 3
+                   ) -> Tuple[Dict[str, jnp.ndarray]]:
     """Splits inputs in groups by number of dimensions."""
-    structures = list([] for _ in range(n))
+    structures = tuple({} for _ in range(n))
     for key, value in items.items():
-        structures[value.ndim - 1].append(value)
-
-    for i in range(n):
-        struct = structures[i]
-        if struct:
-            structures[i] = jnp.concatenate(struct, axis=-1)
-        else:
-            structures[i] = None
+        struct = structures[value.ndim - 1]
+        struct[key] = value
 
     return structures
 

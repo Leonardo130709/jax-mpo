@@ -18,20 +18,20 @@ class MPOConfig(Config):
     epsilon_std: float = 1e-3
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
-    init_log_alpha_std: float = 1000.
+    init_log_alpha_std: float = 100.
 
     # Architecture
     activation: str = "elu"
     normalization: str = "layer"
     stop_actor_grad: bool = True
     #   Encoder
-    keys: str = r"observations"
+    keys: str = "observations"
     encoder_emb_dim: int = 64
     mlp_layers: tuple[int] = (256, 256)
     pn_layers: tuple[int] = (64, 256, 512)
     cnn_kernels: tuple[int] = (4, 4, 4, 4)
     cnn_depth: int = 48
-    feature_fusion: str = "cnn"
+    feature_fusion: str = r"$^"
     #   Actor
     actor_layers: tuple[int] = (256, 256, 256)
     min_std: float = .1
@@ -43,7 +43,7 @@ class MPOConfig(Config):
     quantile_embedding_dim: int = 64
 
     # reverb
-    min_replay_size: int = 1e3
+    min_replay_size: int = 2e3
     samples_per_insert: int = 64
     batch_size: int = 256
     buffer_capacity: int = 1e6

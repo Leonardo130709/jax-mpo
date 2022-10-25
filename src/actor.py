@@ -9,12 +9,10 @@ import chex
 import haiku as hk
 import reverb
 
+from rltools.loggers import JSONLogger
 from src.networks import MPONetworks
 from src.config import MPOConfig
 from src.utils import env_loop
-from rltools.loggers import JSONLogger
-
-CPU = jax.devices("cpu")[0]
 
 
 class Actor:
@@ -26,7 +24,7 @@ class Actor:
                  client: reverb.Client
                  ):
 
-        @partial(jax.jit, backend="cpu")
+        @jax.jit
         @chex.assert_max_traces(n=1)
         def _act(params: hk.Params,
                  key: jax.random.PRNGKey,
@@ -72,7 +70,7 @@ class Actor:
 
     def update_params(self):
         params = next(self._weights_ds).data
-        self._params = jax.device_put(params, CPU)
+        self._params = jax.device_put(params)
 
     def run(self):
         step = 0
