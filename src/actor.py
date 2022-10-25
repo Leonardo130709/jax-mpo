@@ -12,7 +12,7 @@ import reverb
 from src.networks import MPONetworks
 from src.config import MPOConfig
 from src.utils import env_loop
-from rltools.loggers import TerminalOutput
+from rltools.loggers import JSONLogger
 
 CPU = jax.devices("cpu")[0]
 
@@ -82,7 +82,7 @@ class Actor:
         timestep = self._env.reset()
         eval_policy = partial(self.act, training=False)
         train_policy = partial(self.act, training=True)
-        log = TerminalOutput()
+        log = JSONLogger(self.cfg.logdir + "/eval_metrics.jsonl")
 
         while step < self.cfg.total_steps:
             if should_update(step):
@@ -110,10 +110,9 @@ class Actor:
                     returns.append(sum(tr["rewards"]))
                     dur.append(len(tr["actions"]))
 
-                now = time.strftime("%H:%M", time.gmtime(time.time() - start))
                 metrics = {
                     "step": step,
-                    'time_expired': now,
+                    'time_expired': time.time() - start,
                     "train_return": sum(trajectory['rewards']),
                     "eval_return_mean": np.mean(returns),
                     "eval_return_std": np.std(returns),

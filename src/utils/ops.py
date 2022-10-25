@@ -78,14 +78,17 @@ def temperature_loss_and_normalized_weights(
         epsilon: float,
         tv_constraint: float
 ) -> Tuple[Array, Array]:
-    """Direct dual constraint as a part of CMPO loss."""
+    """Direct dual constraint as a part of (C)MPO loss.
+
+    If tv_constraint is finite, CMPO will be used instead.
+    """
     chex.assert_type([temperature, q_values, epsilon, tv_constraint], float)
     chex.assert_rank(
         [temperature, q_values, epsilon, tv_constraint], [0, 1, 0, 0]
     )
     sg = jax.lax.stop_gradient
 
-    if True or tv_constraint < float('inf'):
+    if tv_constraint < float('inf'):
         q_values = sg(q_values)
         adv = q_values - jnp.mean(q_values)
         tempered_q_values = adv / temperature

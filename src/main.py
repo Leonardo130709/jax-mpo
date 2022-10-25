@@ -48,7 +48,7 @@ def main():
                          )
     server.start()
     actors = []
-    for _ in range(10):
+    for _ in range(1):
         actor = mp.Process(target=run_actor,
                            args=(builder, server_address))
         actor.start()
