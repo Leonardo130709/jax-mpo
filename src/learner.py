@@ -274,7 +274,7 @@ class MPOLearner:
                 )
             chex.assert_tree_shape_prefix(actions, (cfg.batch_size,))
             observations = networks.preprocess(observations)
-            next_observations = next_observations(next_observations)
+            next_observations = networks.preprocess(next_observations)
             actions = prec.cast_to_compute(actions)
             rewards, discounts = prec.cast_to_output((rewards, discounts))
 

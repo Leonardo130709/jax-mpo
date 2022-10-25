@@ -306,7 +306,8 @@ def make_networks(cfg: MPOConfig,
     hk.mixed_precision.set_policy(CriticsEnsemble, prec)
 
     dummy_obs = jax.tree_util.tree_map(
-        lambda sp: sp.generate_value(), observation_spec,
+        lambda sp: sp.generate_value(),
+        observation_spec,
         is_leaf=lambda x: isinstance(x, specs.Array)
     )
 
