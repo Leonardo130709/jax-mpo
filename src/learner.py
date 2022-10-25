@@ -131,26 +131,39 @@ class MPOLearner:
             target_policy_params = networks.actor(target_params, target_s_t)
             target_dist = networks.make_policy(*target_policy_params)
             a_t = target_dist.sample(seed=k3, sample_shape=cfg.num_actions)
+            a_t = jnp.clip(a_t, a_min=-1., a_max=1.)
 
             def expand(ar):
                 return jnp.repeat(ar[jnp.newaxis], cfg.num_actions, axis=0)
             target_s_t, tau_t = map(expand, (target_s_t, tau_t))
-            # z_t.shape : (num_actions, num_actor_quantiles, num_critic_heads)
-            z_t = networks.critic(target_params, target_s_t, a_t, tau_t)
-            z_t = jnp.min(z_t, axis=2)  # pessimistic ensemble
-            # z_tm1.shape: (num_critic_quantiles, num_critic_heads)
-            z_tm1 = networks.critic(params, s_tm1, a_tm1, tau_tm1)
-            v_t = jnp.mean(z_t, axis=0)
-            q_t = jnp.mean(z_t, axis=1)  # risk-neutral agent
-            target_z_tm1 = sg(r_t + discount_t * v_t)
 
-            critic_loss_fn = jax.vmap(
-                ops.quantile_regression_loss,
-                in_axes=(1, None, None, None)
-            )
-            critic_loss = critic_loss_fn(
-                z_tm1, tau_tm1, target_z_tm1, cfg.hubber_delta)
-            critic_loss = jnp.mean(critic_loss)
+            if cfg.use_iqn:
+                # z_t.shape: (num_actions, num_actor_quantiles, num_critic_heads)
+                z_t = networks.critic(target_params, target_s_t, a_t, tau_t)
+                z_t = jnp.min(z_t, axis=2)  # pessimistic ensemble
+                # z_tm1.shape: (num_critic_quantiles, num_critic_heads)
+                z_tm1 = networks.critic(params, s_tm1, a_tm1, tau_tm1)
+                v_t = jnp.mean(z_t, axis=0)
+                q_t = jnp.mean(z_t, axis=1)  # risk-neutral agent
+                target_z_tm1 = sg(r_t + discount_t * v_t)
+
+                critic_loss_fn = jax.vmap(
+                    ops.quantile_regression_loss,
+                    in_axes=(1, None, None, None)
+                )
+                critic_loss = critic_loss_fn(
+                    z_tm1, tau_tm1, target_z_tm1, cfg.hubber_delta)
+                critic_loss = jnp.mean(critic_loss)
+
+            else:
+                # q_t.shape: (num_actions, num_critic_heads)
+                q_t = networks.critic(target_params, target_s_t, a_t)
+                q_t = jnp.min(q_t, axis=1)
+                q_tm1 = networks.critic(params, s_tm1, a_tm1)
+                v_t = jnp.mean(q_t, axis=0)
+                target_q_tm1 = sg(r_t + discount_t * v_t)
+                critic_loss = jnp.square(q_tm1 - target_q_tm1[..., jnp.newaxis])
+                critic_loss = .5 * jnp.mean(critic_loss)
 
             temperature, alpha_mean, alpha_std = \
                 jax.tree_util.tree_map(ops.softplus, dual_params)

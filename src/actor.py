@@ -57,7 +57,11 @@ class Actor:
             max_in_flight_samples_per_worker=1,
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
-        self._adder = env_loop.Adder(client, cfg.n_step, cfg.discount)
+        self._adder = env_loop.Adder(client,
+                                     next(self._rng_seq),
+                                     cfg.n_step,
+                                     cfg.discount
+                                     )
         self._params = None
         self.update_params()
 

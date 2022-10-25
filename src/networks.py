@@ -10,6 +10,7 @@ import tensorflow_probability.substrates.jax as tfp
 from dm_env import specs
 
 from src.config import MPOConfig
+from src import GOAL_KEY
 
 tfd = tfp.distributions
 
@@ -104,25 +105,6 @@ class Actor(hk.Module):
         return mean, std
 
 
-class Critic(hk.Module):
-    def __init__(self,
-                 layers: Iterable[int],
-                 act: str = "elu",
-                 norm: str = "none",
-                 name: str = "critic"
-                 ):
-        super().__init__(name=name)
-        self.layers = tuple(layers)
-        self.act = act
-        self.norm = norm
-
-    def __call__(self, observations, actions, tau=None):
-        chex.assert_equal_rank([observations, actions])
-        x = jnp.concatenate([observations, actions], -1)
-        mlp = MLP(self.layers + (1,), self.act, self.norm)
-        return mlp(x)
-
-
 class QuantileNetwork(hk.Module):
     """Quantile network from the IQN paper (1806.06923)."""
 
@@ -164,12 +146,27 @@ class DistributionalCritic(hk.Module):
         return MLP(self.layers + (1,), self.act, self.norm)(x * tau)
 
 
+class Critic(DistributionalCritic):
+    """Ordinary MLP critic."""
+    def __call__(self, state, action, tau=None):
+        chex.assert_equal_rank([state, action])
+        x = jnp.concatenate([state, action], -1)
+        mlp = MLP(self.layers + (1,), self.act, self.norm)
+        return mlp(x)
+
+
 class CriticsEnsemble(hk.Module):
 
-    def __init__(self, n_heads: int, *args, name="critic", **kwargs):
+    def __init__(self,
+                 n_heads: int,
+                 use_iqn: bool,
+                 *args,
+                 name="critic",
+                 **kwargs):
         super().__init__(name=name)
         self.n_heads = n_heads
-        self._factory = lambda n: DistributionalCritic(*args, name=n, **kwargs)
+        critic_cls = DistributionalCritic if use_iqn else Critic
+        self._factory = lambda n: critic_cls(*args, name=n, **kwargs)
 
     def __call__(self, *args, **kwargs):
         values = []
@@ -347,6 +344,7 @@ def make_networks(cfg: MPOConfig,
         )
         critic = CriticsEnsemble(
             cfg.num_critic_heads,
+            cfg.use_iqn,
             cfg.critic_layers,
             cfg.quantile_embedding_dim,
             cfg.activation,
@@ -373,12 +371,13 @@ def make_networks(cfg: MPOConfig,
         return tfd.Independent(dist, 1)
 
     def split_params(params: hk.Params) -> Tuple[hk.Params]:
+        modules = ("actor", "encoder", "critic")
+
         def fn(module, name, value):
-            modules = ("actor", "encoder", "critic")
             name = module.split("/")[0]
             return modules.index(name)
 
-        return hk.data_structures.partition_n(fn, params, 3)
+        return hk.data_structures.partition_n(fn, params, len(modules))
 
     actor_fn, encoder_fn, critic_fn = model.apply
     return MPONetworks(

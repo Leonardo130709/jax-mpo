@@ -9,16 +9,16 @@ class MPOConfig(Config):
     action_repeat: int = 1
     n_step: int = 1
     num_actions: int = 20
-    num_actor_quantiles: int = 16
-    num_critic_quantiles: int = 2
-    tv_constraint: float = float("inf")
-    hubber_delta: float = 0.
+    num_actor_quantiles: int = 32
+    num_critic_quantiles: int = 1
+    tv_constraint: float = 1.
+    hubber_delta: float = 1.
     epsilon_eta: float = .1
     epsilon_mean: float = 1e-2
     epsilon_std: float = 1e-4
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
-    init_log_alpha_std: float = 100.
+    init_log_alpha_std: float = 1000.
 
     # Architecture
     activation: str = "elu"
@@ -33,12 +33,13 @@ class MPOConfig(Config):
     cnn_depth: int = 48
     feature_fusion: str = "cnn"
     #   Actor
-    actor_layers: tuple[int] = (128, 128)
+    actor_layers: tuple[int] = (256, 256, 256)
     min_std: float = .1
-    init_std: float = .1
+    init_std: float = 1.
     #   Critic
+    use_iqn: bool = False
     num_critic_heads: int = 1
-    critic_layers: tuple[int] = (512, 512)
+    critic_layers: tuple[int] = (512, 512, 512)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -51,12 +52,12 @@ class MPOConfig(Config):
     reverb_port: int = 4446
 
     # training
-    learning_rate: float = 1e-4
+    learning_rate: float = 1e-3
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
-    adam_eps: float = 1e-8
-    targets_update_period: int = 50
+    adam_eps: float = 1e-6
+    targets_update_period: int = 100
     max_seq_len: int = 50
     eval_every: int = 1e4
     log_every: int = 1e2

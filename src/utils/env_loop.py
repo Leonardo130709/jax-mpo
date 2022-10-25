@@ -3,12 +3,13 @@ from collections import deque, defaultdict
 import re
 import copy
 
+import jax
 import dm_env
 import numpy as np
 import reverb
-from jax.tree_util import tree_map
 
 from src import GOAL_KEY
+from src.utils.ops import sample_from_geometrical
 
 Action = Array = np.ndarray
 Observation = Dict[str, Array]
@@ -87,12 +88,15 @@ def n_step_fn(trajectory: Trajectory,
 
 
 def goal_augmentation(trajectory: Trajectory,
+                      rng: jax.random.PRNGKey,
                       goal_key: str,
                       strategy: str = "none",
+                      discount: float = 1.,
                       amount: int = 1,
                       ) -> list[Trajectory]:
-    """Augments input trajectory with N additional goals."""
+    """Augments source trajectory with additional goals."""
     test_obs = trajectory["observations"][0]
+    assert np.all(trajectory["discounts"][:-1] > 0.), "Early termination."
     if goal_key not in test_obs.keys():
         candidates = list(filter(
             lambda key: re.match(goal_key, key),
@@ -110,9 +114,16 @@ def goal_augmentation(trajectory: Trajectory,
             obs[GOAL_KEY] = hindsight_goal
         aug["rewards"][-1] = 1.
         trajectories.extend(amount * [aug])
-    else:
-        # TODO: implement random strategies properly.
-        pass
+    elif strategy == "future":
+        discounts = discount * jax.numpy.array(trajectory["discounts"])
+        term_idx = sample_from_geometrical(rng, discounts, (amount,))
+        for i in term_idx.tolist():
+            tr = tree_slice(
+                slice(0, i), trajectory,
+                is_leaf=lambda x: isinstance(x, list)
+            )
+            aug = goal_augmentation(tr, rng, goal_key, "last", 1)
+            trajectories.append(aug[-1])
 
     return trajectories
 
@@ -120,17 +131,20 @@ def goal_augmentation(trajectory: Trajectory,
 class Adder:
     def __init__(self,
                  client: reverb.Client,
+                 rng: jax.random.PRNGKey,
                  n_step: int = 1,
-                 discount: float = .99
+                 discount: float = .99,
                  ):
         self._client = client
+        self._rng = rng
         self.n_step = n_step
         self.discount = discount
         self._n_step_fn = lambda tr: n_step_fn(tr, n_step, discount)
-        self._augmentation_fn = lambda tr: [tr]
+        self._augmentation_fn = lambda tr, *args: [tr]
 
     def __call__(self, trajectory: Trajectory):
-        trajectories = self._augmentation_fn(trajectory)
+        self._rng, rng = jax.random.split(self._rng)
+        trajectories = self._augmentation_fn(trajectory, rng)
         trajectories = map(self._n_step_fn, trajectories)
         for tr in trajectories:
             self._insert(tr)
@@ -154,6 +168,6 @@ class Adder:
 
 
 def tree_slice(sl, tree, is_leaf=None):
-    return tree_map(
+    return jax.tree_util.tree_map(
         lambda t: t[sl], tree, is_leaf=is_leaf
     )
