@@ -87,10 +87,9 @@ def temperature_loss_and_normalized_weights(
         [temperature, q_values, epsilon, tv_constraint], [0, 1, 0, 0]
     )
     sg = jax.lax.stop_gradient
+    adv = sg(q_values - jnp.mean(q_values))
 
-    if tv_constraint < float('inf'):
-        q_values = sg(q_values)
-        adv = q_values - jnp.mean(q_values)
+    if tv_constraint < float("inf"):
         tempered_q_values = adv / temperature
         clipped = jnp.clip(
             tempered_q_values,
@@ -100,7 +99,7 @@ def temperature_loss_and_normalized_weights(
         straight_through = tempered_q_values - sg(tempered_q_values)
         tempered_q_values = sg(clipped) + straight_through
     else:
-        tempered_q_values = sg(q_values) / temperature
+        tempered_q_values = adv / temperature
     tempered_q_values = tempered_q_values.astype(jnp.float32)
 
     normalized_weights = jax.nn.softmax(tempered_q_values)

@@ -42,21 +42,19 @@ def main():
     env, env_specs = builder.make_env()
     server_address = f"localhost:{config.reverb_port}"
     server = mp.Process(target=run_server,
-                        args=(builder, env_specs))
+                        args=(builder, env_specs)
+                        )
+    actor = mp.Process(target=run_actor,
+                       args=(builder, server_address)
+                       )
     learner = mp.Process(target=run_learner,
                          args=(builder, server_address, env_specs)
                          )
     server.start()
-    actors = []
-    for _ in range(1):
-        actor = mp.Process(target=run_actor,
-                           args=(builder, server_address))
-        actor.start()
-        actors.append(actor)
+    actor.start()
     learner.start()
 
-    for actor in actors:
-        actor.join()
+    actor.join()
     learner.join()
     server.join()
 

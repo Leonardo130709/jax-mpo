@@ -19,15 +19,16 @@ class MPOConfig(Config):
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 100.
+    hindsight_goal_key: str = r"$^"
 
     # Architecture
     activation: str = "elu"
     normalization: str = "layer"
     stop_actor_grad: bool = True
     #   Encoder
-    keys: str = "observations"
+    keys: str = r".*"
     encoder_emb_dim: int = 64
-    mlp_layers: tuple[int] = (256, 256)
+    mlp_layers: tuple[int] = (256,)
     pn_layers: tuple[int] = (64, 256, 512)
     cnn_kernels: tuple[int] = (4, 4, 4, 4)
     cnn_depth: int = 48
@@ -39,7 +40,7 @@ class MPOConfig(Config):
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (512, 512, 512)
+    critic_layers: tuple[int] = (256, 256, 256)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -68,7 +69,7 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "dmc_walker_walk"
+    task: str = "dmc_manip_reach_site_features"
     logdir: str = "/dev/null"
     total_steps: int = 1e6
     time_limit: int = 1e3

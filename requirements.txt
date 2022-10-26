@@ -10,4 +10,4 @@ tensorflow_probability
 dm_control
 dm-reverb
 git+https://github.com/deepmind/jmp
-git@github.com:Leonardo130709/rltools.git
+`git+https://github.com/Leonardo130709/rltools

@@ -1,5 +1,7 @@
 from typing import NamedTuple
 import functools
+import pickle
+import os
 
 import jax
 import jax.scipy
@@ -55,6 +57,12 @@ class MPOLearner:
         prec = jmp.get_policy(cfg.mp_policy)
 
         _params = networks.init(subkey)
+        weights_path = cfg.logdir + "/weights.pkl"
+        if os.path.exists(weights_path):
+            with open(weights_path, "rb") as weights:
+                _params = pickle.load(weights)
+                _params = jax.device_put(_params)
+
         act_dim = env_spec.action_spec.shape[0]
         _dual_params = Duals(
             log_temperature=jnp.array(cfg.init_log_temperature),
@@ -324,7 +332,10 @@ class MPOLearner:
 
             step = self._state.step
             if step % self._cfg.learner_dump_every == 0:
-                self._client.insert(self._state.params, {"weights": 1.})
+                params = self._state.params
+                self._client.insert(params, {"weights": 1.})
+                with open(self._cfg.logdir + "/weights.pkl") as weights:
+                    pickle.dump(params, weights)
 
             if step % self._cfg.log_every == 0:
                 chex.assert_rank(list(metrics.values()), 0)

@@ -8,7 +8,6 @@ import dm_env
 import numpy as np
 import reverb
 
-from src import GOAL_KEY
 from src.utils.ops import sample_from_geometrical
 
 Action = Array = np.ndarray

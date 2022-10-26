@@ -142,6 +142,8 @@ class DistributionalCritic(hk.Module):
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
         x = jnp.expand_dims(x, -2)
         # warn: implicit broadcast.
+        chex.assert_is_broadcastable([x, tau])
+
         return MLP(self.layers + (1,), self.act, self.norm)(x * tau)
 
 

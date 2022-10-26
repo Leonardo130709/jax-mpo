@@ -20,7 +20,7 @@ class DMC(dm_env.Environment):
         domain, task = task.split("_", 1)
         if domain == "manip":
             from dm_control import manipulation
-            self._env = manipulation.load(task+"_vision", seed)
+            self._env = manipulation.load(task, seed)
         else:
             from dm_control import suite
             self._env = suite.load(
