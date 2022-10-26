@@ -104,7 +104,7 @@ class MPOLearner:
             dual_optim_state=_dual_optim_state,
             rng_key=key,
             loss_scale=_loss_scale,
-            step=jnp.ndarray(0, dtype=jnp.int32)
+            step=jnp.array(0, dtype=jnp.int32)
         )
 
         def mpo_loss(params,
@@ -334,7 +334,7 @@ class MPOLearner:
             if step % self._cfg.learner_dump_every == 0:
                 params = self._state.params
                 self._client.insert(params, {"weights": 1.})
-                with open(self._cfg.logdir + "/weights.pkl") as weights:
+                with open(self._cfg.logdir + "/weights.pkl", "wb") as weights:
                     pickle.dump(params, weights)
 
             if step % self._cfg.log_every == 0:

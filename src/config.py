@@ -75,6 +75,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_stand"
-    logdir: str = "/dev/null"
+    logdir: str = "logdir/ordinary_big"
     total_steps: int = 1e6
     time_limit: int = 1e3
