@@ -36,7 +36,7 @@ class MPOState(NamedTuple):
     dual_optim_state: optax.OptState
     rng_key: jax.random.PRNGKey
     loss_scale: jmp.LossScale
-    step: int
+    step: Array
 
 
 class MPOLearner:
@@ -104,7 +104,7 @@ class MPOLearner:
             dual_optim_state=_dual_optim_state,
             rng_key=key,
             loss_scale=_loss_scale,
-            step=0
+            step=jnp.ndarray(0, dtype=jnp.int32)
         )
 
         def mpo_loss(params,
@@ -140,9 +140,9 @@ class MPOLearner:
             a_t = target_dist.sample(seed=k3, sample_shape=cfg.num_actions)
             a_t = jnp.clip(a_t, a_min=-1., a_max=1.)
 
-            def expand(ar):
+            def repeat(ar):
                 return jnp.repeat(ar[jnp.newaxis], cfg.num_actions, axis=0)
-            target_s_t, tau_t = map(expand, (target_s_t, tau_t))
+            target_s_t, tau_t = map(repeat, (target_s_t, tau_t))
 
             if cfg.use_iqn:
                 # z_t.shape: (num_actions, num_actor_quantiles, num_critic_heads)
@@ -330,7 +330,7 @@ class MPOLearner:
             info, data = data
             self._state, metrics = self._step(self._state, data)
 
-            step = self._state.step
+            step = self._state.step.item()
             if step % self._cfg.learner_dump_every == 0:
                 params = self._state.params
                 self._client.insert(params, {"weights": 1.})

@@ -37,7 +37,7 @@ def run_server(builder, env_specs):
 def main():
     config = MPOConfig()
     os.makedirs(config.logdir)
-    config.save(config.logdir + '/config.yaml')
+    config.save(config.logdir + "/config.yaml")
     builder = Builder(config)
     env, env_specs = builder.make_env()
     server_address = f"localhost:{config.reverb_port}"

@@ -55,10 +55,14 @@ class Actor:
             max_in_flight_samples_per_worker=1,
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
+
         self._adder = env_loop.Adder(client,
                                      next(self._rng_seq),
                                      cfg.n_step,
-                                     cfg.discount
+                                     cfg.discount,
+                                     cfg.hindsight_goal_key,
+                                     cfg.augmentation_strategy,
+                                     cfg.num_augmentations
                                      )
         self._params = None
         self.update_params()
@@ -110,8 +114,8 @@ class Actor:
 
                 metrics = {
                     "step": step,
-                    'time_expired': time.time() - start,
-                    "train_return": sum(trajectory['rewards']),
+                    "time_expired": time.time() - start,
+                    "train_return": sum(trajectory["rewards"]),
                     "eval_return_mean": np.mean(returns),
                     "eval_return_std": np.std(returns),
                     "eval_duration_mean": np.mean(dur),

@@ -1,6 +1,5 @@
 from typing import Callable, Tuple, Dict, TypedDict
 from collections import deque, defaultdict
-import re
 import copy
 
 import jax
@@ -27,16 +26,16 @@ def environment_loop(env: dm_env.Environment,
                      prev_timestep: dm_env.TimeStep,
                      max_timesteps: int = float("inf"),
                      ) -> Tuple[Trajectory, dm_env.TimeStep]:
-    steps = 0
+    step = 0
     trajectory = defaultdict(list)
     timestep = env.reset() if prev_timestep.last() else prev_timestep
     done = False
     while not done:
-        steps += 1
+        step += 1
         obs = timestep.observation
         action = policy(obs)
         timestep = env.step(action)
-        done = timestep.last() or (steps >= max_timesteps)
+        done = timestep.last() or (step >= max_timesteps)
         # o_tm1, a_tm1, r_t, discount_t
         trajectory["observations"].append(obs)
         trajectory["actions"].append(action)
@@ -56,8 +55,6 @@ def n_step_fn(trajectory: Trajectory,
         trajectory.get,
         ("observations", "rewards", "discounts")
     )
-    assert np.all(disc[:-1]), "Unhandled early termination."
-
     length = len(rewards)
     discount_n = discount ** n_step
     next_obs = obs[n_step:] + n_step * [obs[-1]]
@@ -94,23 +91,19 @@ def goal_augmentation(trajectory: Trajectory,
                       amount: int = 1,
                       ) -> list[Trajectory]:
     """Augments source trajectory with additional goals."""
+    if strategy == "none":
+        return [trajectory]
+
     test_obs = trajectory["observations"][0]
-    assert np.all(trajectory["discounts"][:-1] > 0.), "Early termination."
-    if goal_key not in test_obs.keys():
-        candidates = list(filter(
-            lambda key: re.match(goal_key, key),
-            test_obs.keys()
-        ))
-        assert len(candidates) == 1,\
-            f"Wrong key regex {goal_key!r}: {candidates}"
-        goal_key = candidates.pop()
+    assert np.all(trajectory["discounts"][:-1]), "Early termination."
+    assert goal_key in test_obs.keys()
 
     trajectories = [trajectory]
     if strategy == "last":
         hindsight_goal = trajectory["observations"][-1][goal_key]
         aug = copy.deepcopy(trajectory)
         for obs in aug["observations"]:
-            obs[GOAL_KEY] = hindsight_goal
+            obs[goal_key] = hindsight_goal
         aug["rewards"][-1] = 1.
         trajectories.extend(amount * [aug])
     elif strategy == "future":
@@ -123,6 +116,8 @@ def goal_augmentation(trajectory: Trajectory,
             )
             aug = goal_augmentation(tr, rng, goal_key, "last", 1)
             trajectories.append(aug[-1])
+    else:
+        raise ValueError(strategy)
 
     return trajectories
 
@@ -130,16 +125,25 @@ def goal_augmentation(trajectory: Trajectory,
 class Adder:
     def __init__(self,
                  client: reverb.Client,
-                 rng: jax.random.PRNGKey,
+                 rng_key: jax.random.PRNGKey,
                  n_step: int = 1,
                  discount: float = .99,
+                 goal_key: str = None,
+                 aug_strategy: str = "none",
+                 amount: int = 1
                  ):
         self._client = client
-        self._rng = rng
-        self.n_step = n_step
-        self.discount = discount
+        self._rng = rng_key
         self._n_step_fn = lambda tr: n_step_fn(tr, n_step, discount)
-        self._augmentation_fn = lambda tr, *args: [tr]
+
+        self._augmentation_fn = lambda tr, rng: goal_augmentation(
+            tr,
+            rng,
+            goal_key,
+            aug_strategy,
+            discount,
+            amount
+        )
 
     def __call__(self, trajectory: Trajectory):
         self._rng, rng = jax.random.split(self._rng)

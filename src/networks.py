@@ -159,19 +159,19 @@ class Critic(DistributionalCritic):
 class CriticsEnsemble(hk.Module):
 
     def __init__(self,
-                 n_heads: int,
+                 num_heads: int,
                  use_iqn: bool,
                  *args,
                  name="critic",
                  **kwargs):
         super().__init__(name=name)
-        self.n_heads = n_heads
+        self.num_heads = num_heads
         critic_cls = DistributionalCritic if use_iqn else Critic
         self._factory = lambda n: critic_cls(*args, name=n, **kwargs)
 
     def __call__(self, *args, **kwargs):
         values = []
-        for i in range(self.n_heads):
+        for i in range(self.num_heads):
             critic = self._factory(f"critic_{i}")
             values.append(critic(*args, **kwargs))
 
@@ -280,7 +280,7 @@ def ndim_partition(items: Dict[str, jnp.ndarray],
                    n: int = 3
                    ) -> Tuple[Dict[str, jnp.ndarray]]:
     """Splits inputs in groups by number of dimensions."""
-    structures = tuple({} for _ in range(n))
+    structures = tuple(type(items)() for _ in range(n))
     for key, value in items.items():
         struct = structures[value.ndim - 1]
         struct[key] = value
@@ -300,7 +300,7 @@ class MPONetworks(NamedTuple):
 
 def make_networks(cfg: MPOConfig,
                   observation_spec: Dict[str, specs.Array],
-                  action_spec: specs.BoundedArray | specs.DiscreteArray
+                  action_spec: specs.BoundedArray
                   ) -> MPONetworks:
     prec = jmp.get_policy(cfg.mp_policy)
     hk.mixed_precision.set_policy(Encoder, prec)

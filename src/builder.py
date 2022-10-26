@@ -1,4 +1,4 @@
-from typing import NamedTuple
+from typing import NamedTuple, Mapping
 
 import dm_env
 import jax
@@ -16,10 +16,10 @@ from src.utils import envs
 
 
 class EnvironmentSpecs(NamedTuple):
-    observation_spec: specs.Array
-    action_spec: specs.Array
+    observation_spec: Mapping[str, specs.Array]
+    action_spec: specs.BoundedArray
     reward_spec: specs.Array
-    discount_spec: specs.Array
+    discount_spec: specs.BoundedArray
 
 
 class Builder:
@@ -117,7 +117,7 @@ class Builder:
     def make_env(self):
         self._env_rng, seed = jax.random.split(self._env_rng)
         seed = np.random.RandomState(seed)
-        domain, task = self.cfg.task.split('_', 1)
+        domain, task = self.cfg.task.split("_", 1)
         if domain == "dmc":
             env = envs.DMC(task, seed, (64, 64), 0)
             env = dmc_wrappers.ActionRepeat(env, self.cfg.action_repeat)

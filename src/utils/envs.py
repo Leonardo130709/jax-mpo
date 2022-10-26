@@ -9,8 +9,8 @@ import numpy as np
 class DMC(dm_env.Environment):
     def __init__(self,
                  task: str,
-                 seed: int,
-                 size: tuple[int],
+                 seed: int | np.random.RandomState,
+                 size: tuple[int, int],
                  camera: str | int = 0,
                  pn_number: int = 500,
                  ):

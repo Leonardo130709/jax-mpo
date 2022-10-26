@@ -8,18 +8,23 @@ class MPOConfig(Config):
     discount: float = .99
     action_repeat: int = 1
     n_step: int = 1
+    #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
     num_critic_quantiles: int = 1
-    tv_constraint: float = 1.
     hubber_delta: float = 1.
+    #  MPO.
+    tv_constraint: float = 1.
     epsilon_eta: float = .1
     epsilon_mean: float = 1e-1
     epsilon_std: float = 1e-3
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 100.
-    hindsight_goal_key: str = r"$^"
+    #  HER.
+    hindsight_goal_key: str = r"$^"  # todo: match obs key
+    augmentation_strategy: str = "none"
+    num_augmentations: int = 1
 
     # Architecture
     activation: str = "elu"
@@ -29,7 +34,7 @@ class MPOConfig(Config):
     keys: str = r".*"
     encoder_emb_dim: int = 64
     mlp_layers: tuple[int] = (256,)
-    pn_layers: tuple[int] = (64, 256, 512)
+    pn_layers: tuple[int] = (64, 256, 512, 512)
     cnn_kernels: tuple[int] = (4, 4, 4, 4)
     cnn_depth: int = 48
     feature_fusion: str = r"$^"
@@ -40,7 +45,7 @@ class MPOConfig(Config):
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (256, 256, 256)
+    critic_layers: tuple[int] = (512, 512, 512)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -69,7 +74,7 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "dmc_manip_reach_site_features"
+    task: str = "dmc_walker_stand"
     logdir: str = "/dev/null"
     total_steps: int = 1e6
     time_limit: int = 1e3
