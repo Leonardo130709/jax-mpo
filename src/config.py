@@ -22,7 +22,7 @@ class MPOConfig(Config):
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 100.
     #  HER.
-    hindsight_goal_key: str = "target_position"
+    hindsight_goal_key: str = "duplo2x4/position"
     augmentation_strategy: str = "none"
     num_augmentations: int = 1
 
@@ -33,23 +33,24 @@ class MPOConfig(Config):
     #   Encoder
     keys: str = r".*"
     encoder_emb_dim: int = 64
-    mlp_layers: tuple[int] = (256, 256)
+    mlp_layers: tuple[int] = (256,)
     pn_layers: tuple[int] = (64, 256, 512, 512)
     cnn_kernels: tuple[int] = (4, 4, 4, 4)
     cnn_depth: tuple[int] = (48, 48, 48, 48)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_layers: tuple[int] = (256, 256, 256)
+    actor_backend: str = "cpu"
+    actor_layers: tuple[int] = (256, 256)
     min_std: float = 1e-2
     init_std: float = 1.
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (1024, 1024, 1024)
+    critic_layers: tuple[int] = (1024, 1024)
     quantile_embedding_dim: int = 64
 
     # reverb
-    min_replay_size: int = 5e3
+    min_replay_size: int = 1e3
     samples_per_insert: int = 512
     batch_size: int = 256
     buffer_capacity: int = 1e6
@@ -58,13 +59,13 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 1e-3
+    learning_rate: float = 5e-4
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
     adam_eps: float = 1e-6
     target_actor_update_period: int = 25
-    target_critic_update_period: int = 50
+    target_critic_update_period: int = 100
     max_seq_len: int = 50
     eval_every: int = 1e4
     log_every: int = 1e2
@@ -75,7 +76,7 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "dmc_manip_reach_site_features"
-    logdir: str = "logdir/manip_reach_test"
+    task: str = "dmc_manip_reach_duplo_features"
+    logdir: str = "logdir/manip_reach_w_final"
     total_steps: int = 1e6
     time_limit: int = 1e3

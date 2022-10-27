@@ -25,7 +25,7 @@ class Actor:
                  client: reverb.Client
                  ):
 
-        @jax.jit
+        @partial(jax.jit, backend=cfg.actor_backend)
         @chex.assert_max_traces(n=1)
         def _act(params: hk.Params,
                  key: jax.random.PRNGKey,
@@ -50,6 +50,7 @@ class Actor:
         self._act = _act
         self.cfg = cfg
         self._client = client
+        self._device = jax.devices(cfg.actor_backend)[0]
         self._weights_ds = reverb.TimestepDataset.from_table_signature(
             client.server_address,
             table="weights",
@@ -82,7 +83,7 @@ class Actor:
 
     def update_params(self):
         params = next(self._weights_ds).data
-        self._params = jax.device_put(params)
+        self._params = jax.device_put(params, self._device)
 
     def run(self):
         step = 0

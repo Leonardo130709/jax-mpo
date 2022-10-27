@@ -1,6 +1,7 @@
 import os
 
 import dm_env
+import jax
 from dm_env.specs import Array
 import numpy as np
 # import PIL
@@ -12,15 +13,18 @@ class DMC(dm_env.Environment):
                  seed: int | np.random.RandomState,
                  size: tuple[int, int],
                  camera: str | int = 0,
-                 pn_number: int = 500,
+                 pn_number: int = 1000,
                  ):
         os.environ["MUJOCO_GL"] = "egl"
         from src.utils.dm_control_pcd_generator import PointCloudGenerator
 
         domain, task = task.split("_", 1)
+        self._is_manip = False
+
         if domain == "manip":
             from dm_control import manipulation
             self._env = manipulation.load(task, seed)
+            self._is_manip = True
         else:
             from dm_control import suite
             self._env = suite.load(
@@ -52,7 +56,17 @@ class DMC(dm_env.Environment):
 
     def observation_spec(self):
         obs_spec = self._env.observation_spec()
-        # TODO: restore this.
+
+        def _replace_shape(spec):
+            shape = spec.shape
+            return spec.replace(shape=(np.prod(shape),))
+
+        if self._is_manip:
+            obs_spec = jax.tree_util.tree_map(
+                _replace_shape,
+                obs_spec,
+                is_leaf=lambda x: isinstance(x, dm_env.specs.Array)
+            )
         # obs_spec.update(
         #     depth_map=Array(self.size + (1,), np.float32),
         #     point_cloud=Array((self.pn_number, 3), np.float32),
@@ -61,19 +75,19 @@ class DMC(dm_env.Environment):
         return obs_spec
 
     def _update_obs(self, obs):
+        if self._is_manip:
+            for k, v in obs.items():
+                obs[k] = v.flatten()
         return obs
         physics = self._env.physics
-        depth_map = physics.render(*self.size, camera_id=self.camera, depth=True)
-        depth_map = depth_map[..., None]
+        # depth_map = physics.render(*self.size, camera_id=self.camera, depth=True)
+        # depth_map = depth_map[..., None]
         obs.update(
             point_cloud=self._pcg(physics).astype(np.float32),
-            image=physics.render(*self.size, camera_id=self.camera),
-            depth_map=depth_map
+            # image=physics.render(*self.size, camera_id=self.camera),
+            # depth_map=depth_map
         )
         return obs
-
-
-
 
 
 # class UR5(dm_env.Environment):

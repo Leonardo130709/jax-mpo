@@ -32,7 +32,7 @@ def run_learner(builder, server_address, env_specs):
 
 
 def run_server(builder, env_specs):
-    prepare_logdir(builder.cfg)
+    # prepare_logdir(builder.cfg)
     server = builder.make_server(env_specs)
     server.wait()
 

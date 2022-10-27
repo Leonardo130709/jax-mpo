@@ -99,7 +99,7 @@ def goal_augmentation(trajectory: Trajectory,
     assert goal_key in test_obs.keys()
 
     trajectories = [trajectory]
-    if strategy == "last":
+    if strategy == "final":
         hindsight_goal = trajectory["observations"][-1][goal_key]
         aug = copy.deepcopy(trajectory)
         for obs in aug["observations"]:
@@ -114,7 +114,7 @@ def goal_augmentation(trajectory: Trajectory,
                 slice(0, i), trajectory,
                 is_leaf=lambda x: isinstance(x, list)
             )
-            aug = goal_augmentation(tr, rng, goal_key, "last", 1)
+            aug = goal_augmentation(tr, rng, goal_key, "final", 1)
             trajectories.append(aug[-1])
     else:
         raise ValueError(strategy)
