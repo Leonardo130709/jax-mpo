@@ -30,7 +30,7 @@ class Builder:
             jax.random.split(rng, 3)
         self._env_specs = None
 
-    def make_server(self, env_specs: EnvironmentSpecs):
+    def make_server(self, env_specs: EnvironmentSpecs, checkpoint=None):
         networks = self.make_networks(env_specs)
         self._actor_rng, rng = jax.random.split(self._actor_rng)
         params = networks.init(rng)
@@ -55,6 +55,7 @@ class Builder:
                 sampler=reverb.selectors.Uniform(),
                 remover=reverb.selectors.Fifo(),
                 max_size=self.cfg.buffer_capacity,
+                max_times_sampled=self.cfg.samples_per_insert,
                 rate_limiter=reverb.rate_limiters.SampleToInsertRatio(
                     min_size_to_sample=self.cfg.min_replay_size,
                     samples_per_insert=self.cfg.samples_per_insert,
@@ -73,9 +74,10 @@ class Builder:
             )
         ]
         # TODO: use reverb checkpoint.
-        checkpointer = reverb.checkpointers.DefaultCheckpointer(
-            self.cfg.logdir + "/reverb"
-        )
+        path = self.cfg.logdir + "/reverb/"
+        if checkpoint:
+            path += checkpoint
+        checkpointer = reverb.checkpointers.DefaultCheckpointer(path)
         server = reverb.Server(tables,
                                self.cfg.reverb_port,
                                checkpointer)

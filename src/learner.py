@@ -357,6 +357,7 @@ class MPOLearner:
                 self._client.insert(params, {"weights": 1.})
                 with open(self._cfg.logdir + "/weights.pkl", "wb") as weights:
                     pickle.dump(params, weights)
+                # self._client.checkpoint()
 
             if step % self._cfg.log_every == 0:
                 chex.assert_rank(list(metrics.values()), 0)

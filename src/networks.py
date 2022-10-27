@@ -183,7 +183,7 @@ class Encoder(hk.Module):
                  mlp_layers: Iterable[int],
                  pn_layers: Iterable[int],
                  cnn_kernels: Iterable[int],
-                 cnn_depth: int,
+                 cnn_depths: Iterable[int],
                  act: str,
                  norm: str,
                  feature_fusion: str = "none",
@@ -195,7 +195,7 @@ class Encoder(hk.Module):
         self.mlp_layers = tuple(mlp_layers)
         self.pn_layers = tuple(pn_layers)
         self.cnn_kernels = tuple(cnn_kernels)
-        self.cnn_depth = cnn_depth
+        self.cnn_depths = tuple(cnn_depths)
         self.act = act
         self.norm = norm
         self.feature_fusion = feature_fusion
@@ -250,8 +250,8 @@ class Encoder(hk.Module):
         return emb(state)
 
     def _cnn(self, x):
-        for kernel in self.cnn_kernels:
-            x = hk.Conv2D(self.cnn_depth, kernel, 2)(x)
+        for depth, kernel in zip(self.cnn_depths, self.cnn_kernels):
+            x = hk.Conv2D(depth, kernel, 2)(x)
             x = NormLayer(self.norm)(x)
             x = get_act(self.act)(x)
         return x.reshape(-1)
