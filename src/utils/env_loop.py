@@ -7,6 +7,7 @@ import dm_env
 import numpy as np
 import reverb
 
+from src import GOAL_KEY
 from src.utils.ops import sample_from_geometrical
 
 Action = Array = np.ndarray
@@ -85,7 +86,7 @@ def n_step_fn(trajectory: Trajectory,
 
 def goal_augmentation(trajectory: Trajectory,
                       rng: jax.random.PRNGKey,
-                      goal_key: str,
+                      goal_source: str,
                       strategy: str = "none",
                       discount: float = 1.,
                       amount: int = 1,
@@ -96,14 +97,14 @@ def goal_augmentation(trajectory: Trajectory,
 
     test_obs = trajectory["observations"][0]
     assert np.all(trajectory["discounts"][:-1]), "Early termination."
-    assert goal_key in test_obs.keys()
+    assert goal_source in test_obs.keys()
 
     trajectories = [trajectory]
     if strategy == "final":
-        hindsight_goal = trajectory["observations"][-1][goal_key]
+        hindsight_goal = trajectory["observations"][-1][goal_source]
         aug = copy.deepcopy(trajectory)
         for obs in aug["observations"]:
-            obs[goal_key] = hindsight_goal
+            obs[GOAL_KEY] = hindsight_goal
         aug["rewards"][-1] = 1.
         trajectories.extend(amount * [aug])
     elif strategy == "future":
@@ -114,7 +115,7 @@ def goal_augmentation(trajectory: Trajectory,
                 slice(0, i), trajectory,
                 is_leaf=lambda x: isinstance(x, list)
             )
-            aug = goal_augmentation(tr, rng, goal_key, "final", 1)
+            aug = goal_augmentation(tr, rng, goal_source, "final", 1)
             trajectories.append(aug[-1])
     else:
         raise ValueError(strategy)
@@ -128,7 +129,7 @@ class Adder:
                  rng_key: jax.random.PRNGKey,
                  n_step: int = 1,
                  discount: float = .99,
-                 goal_key: str = None,
+                 goal_source: str = None,
                  aug_strategy: str = "none",
                  amount: int = 1
                  ):
@@ -137,7 +138,7 @@ class Adder:
         self._n_step_fn = lambda tr: n_step_fn(tr, n_step, discount)
 
         self._augmentation_fn = lambda tr, rng: goal_augmentation(
-            tr, rng, goal_key,
+            tr, rng, goal_source,
             aug_strategy,
             discount, amount
         )

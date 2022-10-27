@@ -22,7 +22,7 @@ class MPOConfig(Config):
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 100.
     #  HER.
-    hindsight_goal_key: str = "duplo2x4/position"
+    hindsight_goal_key: str = "jaco_arm/jaco_hand/pinch_site_pos"
     augmentation_strategy: str = "none"
     num_augmentations: int = 1
 
@@ -76,7 +76,6 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "dmc_manip_reach_duplo_features"
-    logdir: str = "logdir/manip_reach_w_final"
-    total_steps: int = 1e6
+    task: str = "dmc_manip_reach_site_features"
+    logdir: str = "logdir/manip_reach_wo_aug"
     time_limit: int = 1e3

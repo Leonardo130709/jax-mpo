@@ -5,6 +5,7 @@ import jax
 from dm_env.specs import Array
 import numpy as np
 # import PIL
+from src import GOAL_KEY
 
 
 class DMC(dm_env.Environment):
@@ -67,6 +68,7 @@ class DMC(dm_env.Environment):
                 obs_spec,
                 is_leaf=lambda x: isinstance(x, dm_env.specs.Array)
             )
+            obs_spec[GOAL_KEY] = obs_spec["target_position"]
         # obs_spec.update(
         #     depth_map=Array(self.size + (1,), np.float32),
         #     point_cloud=Array((self.pn_number, 3), np.float32),
@@ -78,6 +80,7 @@ class DMC(dm_env.Environment):
         if self._is_manip:
             for k, v in obs.items():
                 obs[k] = v.flatten()
+            obs[GOAL_KEY] = obs["target_position"]
         return obs
         physics = self._env.physics
         # depth_map = physics.render(*self.size, camera_id=self.camera, depth=True)
