@@ -16,6 +16,7 @@ jax.config.update("jax_disable_jit", True)
 
 
 def run_actor(builder, server_address):
+    prepare_logdir(builder.cfg)
     env, env_specs = builder.make_env()
     client = reverb.Client(server_address)
     actor = builder.make_actor(env, env_specs, client)
@@ -23,6 +24,7 @@ def run_actor(builder, server_address):
 
 
 def run_learner(builder, server_address, env_specs):
+    prepare_logdir(builder.cfg)
     ds = builder.make_dataset_iterator(server_address)
     client = reverb.Client(server_address)
     learner = builder.make_learner(env_specs, ds, client)
@@ -30,14 +32,20 @@ def run_learner(builder, server_address, env_specs):
 
 
 def run_server(builder, env_specs):
+    prepare_logdir(builder.cfg)
     server = builder.make_server(env_specs)
     server.wait()
 
 
+def prepare_logdir(cfg: MPOConfig):
+    path = os.path.expanduser(cfg.logdir)
+    if not os.path.exists(path):
+        os.makedirs(path)
+    cfg.save(path + "/config.yaml")
+
+
 def main():
     config = MPOConfig()
-    os.makedirs(config.logdir)
-    config.save(config.logdir + "/config.yaml")
     builder = Builder(config)
     env, env_specs = builder.make_env()
     server_address = f"localhost:{config.reverb_port}"

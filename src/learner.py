@@ -61,6 +61,8 @@ class MPOLearner:
         if os.path.exists(weights_path):
             with open(weights_path, "rb") as weights:
                 _params = pickle.load(weights)
+                print(f"Loading {hk.data_structures.tree_size(_params)} "
+                      "weights.")
                 _params = jax.device_put(_params)
 
         act_dim = env_spec.action_spec.shape[0]
@@ -254,8 +256,27 @@ class MPOLearner:
             params = optax.apply_updates(params, params_update)
             dual_params = optax.apply_updates(dual_params, dual_update)
 
-            target_params = optax.periodic_update(
-                params, target_params, step, cfg.targets_update_period)
+            actor_params, encoder_params, critic_params =\
+                networks.split_params(params)
+            target_actor_params, target_encoder_params, target_critic_params = \
+                networks.split_params(target_params)
+
+            target_actor_params = optax.periodic_update(
+                actor_params,
+                target_actor_params,
+                step,
+                cfg.target_actor_update_period
+            )
+            (target_encoder_params, target_critic_params) =\
+                optax.periodic_update(
+                    (encoder_params, critic_params),
+                    (target_encoder_params, target_critic_params),
+                    step,
+                    cfg.target_critic_update_period
+                )
+            target_params.update(target_actor_params)
+            target_params.update(target_encoder_params)
+            target_params.update(target_critic_params)
 
             return mpostate._replace(
                 params=params,

@@ -137,12 +137,9 @@ class Adder:
         self._n_step_fn = lambda tr: n_step_fn(tr, n_step, discount)
 
         self._augmentation_fn = lambda tr, rng: goal_augmentation(
-            tr,
-            rng,
-            goal_key,
+            tr, rng, goal_key,
             aug_strategy,
-            discount,
-            amount
+            discount, amount
         )
 
     def __call__(self, trajectory: Trajectory):

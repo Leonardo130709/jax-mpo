@@ -73,7 +73,12 @@ class Builder:
             )
         ]
         # TODO: use reverb checkpoint.
-        server = reverb.Server(tables, self.cfg.reverb_port)
+        checkpointer = reverb.checkpointers.DefaultCheckpointer(
+            self.cfg.logdir + "/reverb"
+        )
+        server = reverb.Server(tables,
+                               self.cfg.reverb_port,
+                               checkpointer)
         client = reverb.Client(f"localhost:{self.cfg.reverb_port}")
         client.insert(params, priorities={"weights": 1})
 

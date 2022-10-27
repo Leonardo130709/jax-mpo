@@ -1,3 +1,4 @@
+import re
 import time
 from functools import partial
 
@@ -31,6 +32,7 @@ class Actor:
                  observation: jnp.ndarray,
                  training: bool
                  ) -> jnp.ndarray:
+
             observation = networks.preprocess(observation)
             state = networks.encoder(params, observation)
             policy_params = networks.actor(params, state)
@@ -40,8 +42,7 @@ class Actor:
                 dist.sample(seed=key),
                 dist.distribution.mean()
             )
-            action = jnp.clip(action, a_min=-1, a_max=1)
-            return action
+            return jnp.clip(action, a_min=-1, a_max=1)
 
         self._env = env
         self._act_prec = env.action_spec().dtype
@@ -56,11 +57,14 @@ class Actor:
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
 
+        goal_key = _match_key(cfg.hindsight_goal_key,
+                              env.observation_spec().keys()
+                              )
         self._adder = env_loop.Adder(client,
                                      next(self._rng_seq),
                                      cfg.n_step,
                                      cfg.discount,
-                                     cfg.hindsight_goal_key,
+                                     goal_key,
                                      cfg.augmentation_strategy,
                                      cfg.num_augmentations
                                      )
@@ -155,3 +159,12 @@ def _get_reverb_metrics(client: reverb.Client) -> dict[str, float]:
         if hasattr(info, key):
             reverb_info[f"reverb_{key}"] = getattr(info, key)
     return reverb_info
+
+
+def _match_key(pattern, candidates):
+    candidates = [k for k in candidates if re.match(pattern, k)]
+    assert len(candidates) == 1, \
+        f"Invalid or ambiguous key: {pattern!r} -- {candidates}."
+    return candidates.pop()
+
+
