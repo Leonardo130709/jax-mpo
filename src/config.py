@@ -50,12 +50,12 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 2e3
-    samples_per_insert: int = 64
+    samples_per_insert: int = 128
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
     learner_dump_every: int = 1
-    reverb_port: int = 4446
+    reverb_port: int = 4445
 
     # training
     learning_rate: float = 5e-4

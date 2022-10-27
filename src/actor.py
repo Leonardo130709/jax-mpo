@@ -57,9 +57,13 @@ class Actor:
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
 
-        goal_key = _match_key(cfg.hindsight_goal_key,
-                              env.observation_spec().keys()
-                              )
+        if cfg.augmentation_strategy != "none":
+            goal_key = _match_key(
+                cfg.hindsight_goal_key,
+                env.observation_spec().keys()
+            )
+        else:
+            goal_key = r"$^"
         self._adder = env_loop.Adder(client,
                                      next(self._rng_seq),
                                      cfg.n_step,
@@ -166,5 +170,3 @@ def _match_key(pattern, candidates):
     assert len(candidates) == 1, \
         f"Invalid or ambiguous key: {pattern!r} -- {candidates}."
     return candidates.pop()
-
-
