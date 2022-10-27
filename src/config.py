@@ -58,13 +58,13 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 3e-4
+    learning_rate: float = 1e-3
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
     adam_eps: float = 1e-6
     target_actor_update_period: int = 25
-    target_critic_update_period: int = 100
+    target_critic_update_period: int = 50
     max_seq_len: int = 50
     eval_every: int = 1e4
     log_every: int = 1e2
@@ -75,7 +75,7 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "dmc_manipulation_reach_site_features"
-    logdir: str = "logdir/manip_reach"
+    task: str = "dmc_manip_reach_site_features"
+    logdir: str = "logdir/manip_reach_test"
     total_steps: int = 1e6
     time_limit: int = 1e3

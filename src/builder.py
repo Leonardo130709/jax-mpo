@@ -127,6 +127,7 @@ class Builder:
         domain, task = self.cfg.task.split("_", 1)
         if domain == "dmc":
             env = envs.DMC(task, seed, (64, 64), 0)
+            env = dmc_wrappers.StatesWrapper(env)
             env = dmc_wrappers.ActionRepeat(env, self.cfg.action_repeat)
             env = dmc_wrappers.ActionRescale(env)
         else:
