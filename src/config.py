@@ -6,7 +6,7 @@ from rltools.config import Config
 class MPOConfig(Config):
     # Algorithm
     discount: float = .99
-    action_repeat: int = 1
+    action_repeat: int = 2
     n_step: int = 1
     #  IQN.
     num_actions: int = 20
@@ -33,25 +33,25 @@ class MPOConfig(Config):
     #   Encoder
     keys: str = r".*"
     encoder_emb_dim: int = 64
-    mlp_layers: tuple[int] = (256,)
+    mlp_layers: tuple[int] = ()
     pn_layers: tuple[int] = (64, 256, 512, 512)
     cnn_kernels: tuple[int] = (4, 4, 4, 4)
     cnn_depth: tuple[int] = (48, 48, 48, 48)
     feature_fusion: str = r"$^"
     #   Actor
     actor_backend: str = "cpu"
-    actor_layers: tuple[int] = (256, 256)
+    actor_layers: tuple[int] = (256, 256, 256)
     min_std: float = 1e-2
     init_std: float = 1.
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (1024, 1024)
+    critic_layers: tuple[int] = (512, 512, 512)
     quantile_embedding_dim: int = 64
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 512
+    samples_per_insert: int = 256
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -63,7 +63,7 @@ class MPOConfig(Config):
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
-    adam_eps: float = 1e-6
+    adam_eps: float = 1e-8
     target_actor_update_period: int = 25
     target_critic_update_period: int = 100
     max_seq_len: int = 50
@@ -76,6 +76,7 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "dmc_manip_reach_site_features"
-    logdir: str = "logdir/manip_reach_wo_aug"
+    task: str = "dmc_walker_walk"
+    logdir: str = "logdir/walker_walk"
+    total_steps: int = 1e6
     time_limit: int = 1e3

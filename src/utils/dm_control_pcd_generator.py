@@ -142,5 +142,4 @@ class PointCloudGenerator:
             pcd = np.pad(pcd, ((0, self.pn_number - n), (0, 0)), mode="edge")
         else:
             pcd = np.random.permutation(pcd)[:self.pn_number]
-
         return pcd

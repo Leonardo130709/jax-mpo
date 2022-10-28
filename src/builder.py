@@ -25,10 +25,10 @@ class EnvironmentSpecs(NamedTuple):
 class Builder:
     def __init__(self, config: MPOConfig):
         self.cfg = config
+        # TODO: change rng to numpy since jax.PRNG may use GPU w/o purpose.
         rng = jax.random.PRNGKey(config.seed)
         self._actor_rng, self._learner_rng, self._env_rng = \
             jax.random.split(rng, 3)
-        self._env_specs = None
 
     def make_server(self, env_specs: EnvironmentSpecs, checkpoint=None):
         networks = self.make_networks(env_specs)
@@ -94,7 +94,7 @@ class Builder:
             get_signature_timeout_secs=100
         )
         ds = ds.batch(self.cfg.batch_size, drop_remainder=True)
-        ds = ds.prefetch(-1)
+        ds = ds.prefetch(5)
         return ds.as_numpy_iterator()
 
     def make_networks(self, env_specs: EnvironmentSpecs):

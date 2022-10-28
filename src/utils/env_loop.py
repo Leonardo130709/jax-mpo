@@ -1,4 +1,4 @@
-from typing import Callable, Tuple, Dict, TypedDict
+from typing import Callable, Tuple, Dict, TypedDict, List
 from collections import deque, defaultdict
 import copy
 
@@ -8,18 +8,17 @@ import numpy as np
 import reverb
 
 from src import GOAL_KEY
-from src.utils.ops import sample_from_geometrical
 
 Action = Array = np.ndarray
 Observation = Dict[str, Array]
 
 
 class Trajectory(TypedDict, total=False):
-    observations: list[Observation]
-    actions: list[Action]
-    rewards: list[float]
-    discounts: list[float]
-    next_observations: list[Observation]
+    observations: List[Observation]
+    actions: List[Action]
+    rewards: List[float]
+    discounts: List[float]
+    next_observations: List[Observation]
 
 
 def environment_loop(env: dm_env.Environment,
@@ -52,8 +51,9 @@ def n_step_fn(trajectory: Trajectory,
               discount: float = .99
               ) -> Trajectory:
     """Computes N-step rewards for the trajectory."""
+    res = copy.deepcopy(trajectory)
     obs, rewards, disc = map(
-        trajectory.get,
+        res.get,
         ("observations", "rewards", "discounts")
     )
     length = len(rewards)
@@ -63,7 +63,6 @@ def n_step_fn(trajectory: Trajectory,
         (length - n_step) * [discount_n] + \
         [discount ** i for i in range(n_step, 0, -1)]
 
-    res = trajectory.copy()
     res["next_observations"] = next_obs
     res["discounts"] = discounts
 
@@ -85,12 +84,12 @@ def n_step_fn(trajectory: Trajectory,
 
 
 def goal_augmentation(trajectory: Trajectory,
-                      rng: jax.random.PRNGKey,
+                      rng: np.random.Generator,
                       goal_source: str,
                       strategy: str = "none",
                       discount: float = 1.,
                       amount: int = 1,
-                      ) -> list[Trajectory]:
+                      ) -> List[Trajectory]:
     """Augments source trajectory with additional goals."""
     if strategy == "none":
         return [trajectory]
@@ -108,7 +107,7 @@ def goal_augmentation(trajectory: Trajectory,
         aug["rewards"][-1] = 1.
         trajectories.extend(amount * [aug])
     elif strategy == "future":
-        discounts = discount * jax.numpy.array(trajectory["discounts"])
+        discounts = discount * np.asarray(trajectory["discounts"])
         term_idx = sample_from_geometrical(rng, discounts, (amount,))
         for i in term_idx.tolist():
             tr = tree_slice(
@@ -126,7 +125,7 @@ def goal_augmentation(trajectory: Trajectory,
 class Adder:
     def __init__(self,
                  client: reverb.Client,
-                 rng_key: jax.random.PRNGKey,
+                 rng: np.random.Generator,
                  n_step: int = 1,
                  discount: float = .99,
                  goal_source: str = None,
@@ -134,18 +133,16 @@ class Adder:
                  amount: int = 1
                  ):
         self._client = client
-        self._rng = rng_key
         self._n_step_fn = lambda tr: n_step_fn(tr, n_step, discount)
 
-        self._augmentation_fn = lambda tr, rng: goal_augmentation(
+        self._augmentation_fn = lambda tr: goal_augmentation(
             tr, rng, goal_source,
             aug_strategy,
             discount, amount
         )
 
     def __call__(self, trajectory: Trajectory):
-        self._rng, rng = jax.random.split(self._rng)
-        trajectories = self._augmentation_fn(trajectory, rng)
+        trajectories = self._augmentation_fn(trajectory)
         trajectories = map(self._n_step_fn, trajectories)
         for tr in trajectories:
             self._insert(tr)
@@ -172,3 +169,21 @@ def tree_slice(sl, tree, is_leaf=None):
     return jax.tree_util.tree_map(
         lambda t: t[sl], tree, is_leaf=is_leaf
     )
+
+
+def sample_from_geometrical(rng: np.random.Generator,
+                            discount_t: np.ndarray,
+                            size: tuple = ()
+                            ) -> np.ndarray:
+    # P(t) ~ \prod^t_0 d_i * (1 - d_t)
+    cont_prob_t = np.concatenate([
+        np.ones_like(discount_t[:1]),
+        discount_t
+    ])
+    term_prob_t = np.concatenate([
+        1. - discount_t,
+        np.ones_like(discount_t[-1:])
+    ])
+    cumprod_t = np.cumprod(cont_prob_t)
+    prob_t = cumprod_t * term_prob_t
+    return rng.choice(prob_t.size, size=size, p=prob_t)

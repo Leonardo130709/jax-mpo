@@ -124,22 +124,3 @@ def _kl_trunc_trunc(dist_a, dist_b, name=None):
     # Duct tape. Returns wrong KL.
     norm_kl = tfd.kullback_leibler._DIVERGENCES[(tfd.Normal, tfd.Normal)]
     return norm_kl(dist_a, dist_b, name=name)
-
-
-def sample_from_geometrical(rng, discount_t, shape=()):
-    # P(t) ~ \prod^t_0 (1 - d_i) * d_t
-    chex.assert_type(discount_t, float)
-    chex.assert_rank(discount_t, 1)
-
-    cont_prob_t = jnp.concatenate([
-        jnp.ones_like(discount_t[:1]),
-        discount_t
-    ])
-    term_prob_t = jnp.concatenate([
-        1. - discount_t,
-        jnp.ones_like(discount_t[-1:])
-    ])
-    cumprod_t = jnp.cumprod(cont_prob_t)
-    prob_t = cumprod_t * term_prob_t
-    return jax.random.choice(
-        rng, shape=shape, a=prob_t.size, p=prob_t)

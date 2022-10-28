@@ -10,7 +10,7 @@ import chex
 import haiku as hk
 import reverb
 
-from rltools.loggers import JSONLogger
+from rltools.loggers import JSONLogger, TFSummaryLogger
 from src.networks import MPONetworks
 from src.config import MPOConfig
 from src.utils import env_loop
@@ -46,11 +46,12 @@ class Actor:
 
         self._env = env
         self._act_prec = env.action_spec().dtype
-        self._rng_seq = hk.PRNGSequence(rng_key)
         self._act = _act
         self.cfg = cfg
         self._client = client
         self._device = jax.devices(cfg.actor_backend)[0]
+        rng_key = jax.device_put(rng_key, self._device)
+        self._rng_seq = hk.PRNGSequence(rng_key)
         self._weights_ds = reverb.TimestepDataset.from_table_signature(
             client.server_address,
             table="weights",
@@ -65,8 +66,10 @@ class Actor:
             )
         else:
             goal_key = r"$^"
+
+        np_rng = np.asarray(next(self._rng_seq))
         self._adder = env_loop.Adder(client,
-                                     next(self._rng_seq),
+                                     np.random.default_rng(np_rng),
                                      cfg.n_step,
                                      cfg.discount,
                                      goal_key,
@@ -93,7 +96,8 @@ class Actor:
         timestep = self._env.reset()
         eval_policy = partial(self.act, training=False)
         train_policy = partial(self.act, training=True)
-        log = JSONLogger(self.cfg.logdir + "/eval_metrics.jsonl")
+        json_log = JSONLogger(self.cfg.logdir + "/eval_metrics.jsonl")
+        tf_log = TFSummaryLogger(self.cfg.logdir, "eval", "step")
 
         while step < self.cfg.total_steps:
             if should_update(step):
@@ -132,7 +136,8 @@ class Actor:
                 reverb_info = _get_reverb_metrics(self._client)
                 metrics.update(reverb_info)
                 # Should eval steps also add to total_steps?
-                log.write(metrics)
+                json_log.write(metrics)
+                tf_log.write(metrics)
 
 
 class Every:

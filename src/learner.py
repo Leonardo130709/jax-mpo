@@ -355,8 +355,9 @@ class MPOLearner:
             if step % self._cfg.learner_dump_every == 0:
                 params = self._state.params
                 self._client.insert(params, {"weights": 1.})
-                with open(self._cfg.logdir + "/weights.pkl", "wb") as weights:
-                    pickle.dump(params, weights)
+                # TODO: restore save.
+                # with open(self._cfg.logdir + "/weights.pkl", "wb") as weights:
+                #     pickle.dump(params, weights)
                 # self._client.checkpoint()
 
             if step % self._cfg.log_every == 0:
