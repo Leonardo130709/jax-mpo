@@ -1,11 +1,8 @@
 import os
+import multiprocessing as mp
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-
-import multiprocessing as mp
-import tensorflow as tf
-tf.config.set_visible_devices([], "GPU")
 
 import jax
 import reverb

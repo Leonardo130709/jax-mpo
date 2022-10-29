@@ -31,7 +31,7 @@ class MPOConfig(Config):
     normalization: str = "layer"
     stop_actor_grad: bool = True
     #   Encoder
-    keys: str = r".*"
+    keys: str = "image"
     encoder_emb_dim: int = 64
     mlp_layers: tuple[int] = ()
     pn_layers: tuple[int] = (64, 256, 512, 512)
@@ -39,19 +39,19 @@ class MPOConfig(Config):
     cnn_depth: tuple[int] = (48, 48, 48, 48)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_backend: str = "cpu"
-    actor_layers: tuple[int] = (256, 256, 256)
+    actor_backend: str = "gpu"
+    actor_layers: tuple[int] = (512, 512, 512, 512)
     min_std: float = 1e-2
     init_std: float = 1.
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (512, 512, 512)
+    critic_layers: tuple[int] = (512, 512, 512, 512)
     quantile_embedding_dim: int = 64
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 256
+    samples_per_insert: int = 128
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -63,13 +63,13 @@ class MPOConfig(Config):
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
-    adam_eps: float = 1e-8
+    adam_eps: float = 1e-6
     target_actor_update_period: int = 25
     target_critic_update_period: int = 100
-    max_seq_len: int = 50
+    max_seq_len: int = 25
     eval_every: int = 1e4
     log_every: int = 1e2
-    eval_times: int = 5
+    eval_times: int = 7
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
@@ -77,6 +77,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk"
+    logdir: str = "logdir/walker_walk_image"
     total_steps: int = 1e6
     time_limit: int = 1e3

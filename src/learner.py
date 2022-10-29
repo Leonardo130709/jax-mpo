@@ -211,13 +211,14 @@ class MPOLearner:
                     pfx("kl_loss"): kl_loss,
                     pfx("dual_loss"): dual_loss,
                 }
-                return .5 * loss, met
+                return loss, met
 
             mean_loss, metrics_mean = policy_loss(
                 fixed_std, alpha_mean, cfg.epsilon_mean, prefix="mean")
             std_loss, metrics_std = policy_loss(
                 fixed_mean, alpha_std, cfg.epsilon_std, prefix="std")
-            total_loss = critic_loss + mean_loss + std_loss + temperature_loss
+            total_loss =\
+                critic_loss + .5 * (mean_loss + std_loss) + temperature_loss
 
             metrics = dict(
                 critic_loss=critic_loss,

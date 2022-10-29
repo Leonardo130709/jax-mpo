@@ -243,7 +243,7 @@ class Encoder(hk.Module):
 
         state = jnp.concatenate(outputs, -1)
         emb = MLP((self.emb_dim,),
-                  act=self.act,
+                  act="tanh",
                   norm=self.norm,
                   activate_final=True)
 

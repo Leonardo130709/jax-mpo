@@ -4,8 +4,9 @@ import dm_env
 import jax
 import reverb
 import numpy as np
-import tensorflow as tf
 from dm_env import specs
+import tensorflow as tf
+tf.config.set_visible_devices([], "GPU")
 
 from rltools import dmc_wrappers
 from src.config import MPOConfig
@@ -55,7 +56,7 @@ class Builder:
                 sampler=reverb.selectors.Uniform(),
                 remover=reverb.selectors.Fifo(),
                 max_size=self.cfg.buffer_capacity,
-                max_times_sampled=self.cfg.samples_per_insert,
+                # max_times_sampled=self.cfg.samples_per_insert,
                 rate_limiter=reverb.rate_limiters.SampleToInsertRatio(
                     min_size_to_sample=self.cfg.min_replay_size,
                     samples_per_insert=self.cfg.samples_per_insert,
