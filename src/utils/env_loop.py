@@ -94,10 +94,6 @@ def goal_augmentation(trajectory: Trajectory,
     if strategy == "none":
         return [trajectory]
 
-    test_obs = trajectory["observations"][0]
-    assert np.all(trajectory["discounts"][:-1]), "Early termination."
-    assert goal_source in test_obs.keys()
-
     trajectories = [trajectory]
     if strategy == "final":
         hindsight_goal = trajectory["observations"][-1][goal_source]
@@ -108,7 +104,7 @@ def goal_augmentation(trajectory: Trajectory,
         trajectories.extend(amount * [aug])
     elif strategy == "future":
         discounts = discount * np.asarray(trajectory["discounts"])
-        term_idx = sample_from_geometrical(rng, discounts, (amount,))
+        term_idx = sample_from_geometrical(rng, discounts, amount)
         for i in term_idx.tolist():
             tr = tree_slice(
                 slice(0, i), trajectory,
@@ -128,7 +124,7 @@ class Adder:
                  rng: np.random.Generator,
                  n_step: int = 1,
                  discount: float = .99,
-                 goal_source: str = None,
+                 goal_source: str = r"$^",
                  aug_strategy: str = "none",
                  amount: int = 1
                  ):

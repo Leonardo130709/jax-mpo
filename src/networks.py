@@ -204,7 +204,7 @@ class Encoder(hk.Module):
         """Works with unbatched inputs,
         since there are jax.vmap and hk.BatchApply."""
         chex.assert_rank(list(obs.values()), {1, 2, 3})
-        mlp_features, pn_features, cnn_features = ndim_partition(
+        mlp_features, pn_features, cnn_features = _ndim_partition(
             {k: v for k, v in obs.items() if re.match(self.keys, k)}
         )
         outputs = []
@@ -274,9 +274,9 @@ class Encoder(hk.Module):
         return jnp.max(x, -2)
 
 
-def ndim_partition(items: Dict[str, jnp.ndarray],
-                   n: int = 3
-                   ) -> Tuple[Dict[str, jnp.ndarray]]:
+def _ndim_partition(items: Dict[str, jnp.ndarray],
+                    n: int = 3
+                    ) -> Tuple[Dict[str, jnp.ndarray]]:
     """Splits inputs in groups by number of dimensions."""
     structures = tuple(type(items)() for _ in range(n))
     for key, value in items.items():

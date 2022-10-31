@@ -1,5 +1,4 @@
 from typing import NamedTuple
-import functools
 import pickle
 import os
 
@@ -73,22 +72,22 @@ class MPOLearner:
         )
         _dual_params = prec.cast_to_output(_dual_params)
 
-        adam = functools.partial(optax.adam,
-                                 b1=cfg.adam_b1,
-                                 b2=cfg.adam_b2,
-                                 eps=cfg.adam_eps
-                                 )
+        adamw = optax.adamw(cfg.learning_rate,
+                            cfg.adam_b1,
+                            cfg.adam_b2,
+                            cfg.adam_eps,
+                            weight_decay=cfg.weight_decay)
         optim = optax.chain(
             optax.clip_by_global_norm(cfg.grad_norm),
-            adam(cfg.learning_rate)
+            adamw
         )
-        dual_optim = adam(cfg.dual_lr)
+        dual_optim = optax.adam(cfg.dual_lr)
         _optim_state = optim.init(_params)
         _dual_optim_state = dual_optim.init(_dual_params)
 
         if "16" in cfg.mp_policy:
             _loss_scale = jmp.DynamicLossScale(
-                prec.cast_to_output(2 ** 15)
+                prec.cast_to_output(jnp.float32(2 ** 15))
             )
         else:
             _loss_scale = jmp.NoOpLossScale()
@@ -353,13 +352,15 @@ class MPOLearner:
             self._state, metrics = self._step(self._state, data)
 
             step = self._state.step.item()
+            params = self._state.params
             if step % self._cfg.learner_dump_every == 0:
-                params = self._state.params
                 self._client.insert(params, {"weights": 1.})
                 # TODO: restore save.
-                # with open(self._cfg.logdir + "/weights.pkl", "wb") as weights:
-                #     pickle.dump(params, weights)
-                # self._client.checkpoint()
+
+            if step % 20000 == 0:
+                with open(self._cfg.logdir + "/weights.pkl", "wb") as weights:
+                    pickle.dump(params, weights)
+                self._client.checkpoint()
 
             if step % self._cfg.log_every == 0:
                 chex.assert_rank(list(metrics.values()), 0)

@@ -11,7 +11,7 @@ class MPOConfig(Config):
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
-    num_critic_quantiles: int = 4
+    num_critic_quantiles: int = 1
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
@@ -31,10 +31,10 @@ class MPOConfig(Config):
     normalization: str = "layer"
     stop_actor_grad: bool = True
     #   Encoder
-    keys: str = "image"
+    keys: str = "point_cloud"
     encoder_emb_dim: int = 64
     mlp_layers: tuple[int] = ()
-    pn_layers: tuple[int] = (64, 256, 512, 512)
+    pn_layers: tuple[int] = (256, 256, 256)
     cnn_kernels: tuple[int] = (4, 4, 4, 4)
     cnn_depth: tuple[int] = (48, 48, 48, 48)
     feature_fusion: str = r"$^"
@@ -51,7 +51,7 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 128
+    samples_per_insert: int = 256
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -63,7 +63,8 @@ class MPOConfig(Config):
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
-    adam_eps: float = 1e-6
+    adam_eps: float = 1e-5
+    weight_decay: float = 1e-6
     target_actor_update_period: int = 25
     target_critic_update_period: int = 100
     max_seq_len: int = 25
@@ -77,6 +78,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk_image"
+    logdir: str = "logdir/walker_walk_point_cloud"
     total_steps: int = 1e6
     time_limit: int = 1e3

@@ -24,16 +24,19 @@ class CameraParams(TypedDict):
 
 def partition_geoms_by_name(physics: Physics,
                             names: Iterable[str],
-                            all_geom_ids: Iterable[int],
+                            geom_ids: Iterable[int],
                             ) -> Tuple[List[int], List[int]]:
-    """Splits geom_ids in two groups by input names."""
-    names = tuple(names)
-    in_and_out = ([], [])
-    for _id in all_geom_ids:
-        geom_name = physics.model.id2name(_id, "geom")
-        in_and_out[geom_name not in names].append(_id)
+    """Splits geom_ids in two groups by input names.
 
-    return in_and_out
+    First group return ids that are not in `names`.
+    """
+    names = tuple(names)
+    out_and_in = ([], [])
+    for _id in geom_ids:
+        geom_name = physics.model.id2name(_id, "geom")
+        out_and_in[geom_name in names].append(_id)
+
+    return out_and_in
 
 
 def point_cloud_from_depth_map(depth: np.ndarray,
@@ -52,13 +55,13 @@ def point_cloud_from_depth_map(depth: np.ndarray,
 def intrinsic_params_from_physics(physics: Physics,
                                   camera_params: CameraParams
                                   ) -> IntrinsicParams:
-    """Conversion to explicit type."""
+    """Conversion to explicit namedtuple type."""
     width, height, camera_id = map(
         camera_params.get,
         ("width", "height", "camera_id")
     )
     fov = physics.named.model.cam_fovy[camera_id]
-    f = (1. / np.tan(np.deg2rad(fov) / 2.)) * height / 2.0
+    f = (1 / np.tan(np.deg2rad(fov) / 2.)) * height / 2
     cx = (width - 1) / 2.
     cy = (height - 1) / 2.
 
@@ -80,22 +83,22 @@ class PointCloudGenerator:
                  ):
         self.stride = stride
         self.pn_number = pn_number
-        self._cams = tuple(cameras_params)
-        self._apply_translation = apply_translation
+        self.cameras_params = tuple(cameras_params)
+        self.apply_translation = apply_translation
 
     def __call__(self, physics):
         """Merge cameras views to single point cloud."""
         pcd = np.concatenate([
-            self.call(physics, cam) for cam in self._cams
+            self._call(physics, cam) for cam in self.cameras_params
         ])
         pcd = self._apply_stride(pcd)
 
         return self._to_fixed_number(pcd)
 
-    def call(self,
-             physics: Physics,
-             render_kwargs: CameraParams
-             ) -> PointCloud:
+    def _call(self,
+              physics: Physics,
+              render_kwargs: CameraParams
+              ) -> PointCloud:
         """Per camera pcd generation."""
         depth = physics.render(depth=True, **render_kwargs)
         intrinsic_params = intrinsic_params_from_physics(physics, render_kwargs)
@@ -107,9 +110,8 @@ class PointCloudGenerator:
         rot = data.cam_xmat[render_kwargs["camera_id"]].reshape(3, 3)
         pos = data.cam_xpos[render_kwargs["camera_id"]]
         pcd = - pcd @ rot.T
-        if self._apply_translation:
+        if self.apply_translation:
             pcd += pos
-
         return pcd
 
     def _apply_stride(self, pcd: PointCloud) -> PointCloud:
@@ -127,7 +129,7 @@ class PointCloudGenerator:
         """Segmentation mask: cuts floor, walls, etc."""
         segmentation = physics.render(segmentation=True, **render_kwargs)
         geom_ids = np.unique(segmentation[..., 0]).tolist()
-        _, geom_ids = partition_geoms_by_name(physics, BAD_GEOMS, geom_ids)
+        geom_ids, _ = partition_geoms_by_name(physics, BAD_GEOMS, geom_ids)
         geom_ids.remove(-1)  # sky renders infinity
         segmentation = np.isin(segmentation[..., 0].flatten(), geom_ids)
 

@@ -1,4 +1,4 @@
-"""There is a well known rlax, but as a matter of practice..."""
+"""There is a well tested rlax, but as a matter of practice..."""
 from typing import Tuple
 
 import jax
