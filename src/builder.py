@@ -127,7 +127,7 @@ class Builder:
         seed = np.random.RandomState(seed)
         domain, task = self.cfg.task.split("_", 1)
         if domain == "dmc":
-            env = envs.DMC(task, seed, (64, 64), 0)
+            env = envs.DMC(task, seed, (64, 64), 0, self.cfg.pn_number)
             env = dmc_wrappers.ActionRepeat(env, self.cfg.action_repeat)
             env = dmc_wrappers.ActionRescale(env)
         else:

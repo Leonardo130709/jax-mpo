@@ -231,7 +231,7 @@ class MPOLearner:
                 alpha_std=jnp.mean(alpha_std),
                 temperature_loss=temperature_loss,
                 total_loss=total_loss,
-                mean_reward=r_t,
+                mean_reward=r_t / self._cfg.n_step / self._cfg.action_repeat,
             )
             metrics.update(metrics_mean)
             metrics.update(metrics_std)

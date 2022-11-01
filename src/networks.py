@@ -70,6 +70,20 @@ class MLP(hk.Module):
         return self._mlp(x)
 
 
+class LayerNormTanhEmb(hk.Module):
+    def __init__(self, output_dim: int, name: Optional[str] = None):
+        super().__init__(name=name)
+        self.output_dim = output_dim
+
+    def __call__(self, x):
+        emb = MLP(output_sizes=(self.output_dim,),
+                  act=jax.lax.tanh,
+                  norm="layer",
+                  activate_final=True,
+                  )
+        return emb(x)
+
+
 class Actor(hk.Module):
     def __init__(self,
                  action_spec: specs.BoundedArray,
@@ -91,12 +105,14 @@ class Actor(hk.Module):
     def __call__(self, state):
         """Actor returns params instead of a distribution itself
         since tfd.Distribution doesn't play nicely with jax.vmap."""
-        mlp = MLP(self.layers, self.act, self.norm, activate_final=True)
+        emb = LayerNormTanhEmb(self.layers[0])(state)
+        mlp = MLP(self.layers[1:], self.act, self.norm, activate_final=True)
         out = hk.Linear(2 * self.act_dim,
-                        w_init=hk.initializers.RandomNormal(stddev=1e-2),
+                        w_init=hk.initializers.RandomNormal(stddev=1e-4),
                         b_init=jnp.zeros
                         )
-        x = mlp(state)
+        x = emb(state)
+        x = mlp(x)
         x = out(x)
         mean, std = jnp.split(x, 2, -1)
         mean = jnp.tanh(mean)
@@ -138,17 +154,23 @@ class DistributionalCritic(hk.Module):
     def __call__(self, state, action, tau):
         chex.assert_equal_rank([state, action, tau])
 
+        emb = LayerNormTanhEmb(self.layers[0])
+        state = emb(state)
         x = jnp.concatenate([state, action], -1)
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
         x = jnp.expand_dims(x, -2)
-        # warn: implicit broadcast.
-        return MLP(self.layers + (1,), self.act, self.norm)(x * tau)
+        x = jnp.repeat(x, tau.shape[-2], -2)
+        x *= (1 + tau)
+        mlp = MLP(self.layers[1:] + (1,), self.act, self.norm)
+        return mlp(x)
 
 
 class Critic(DistributionalCritic):
     """Ordinary MLP critic."""
     def __call__(self, state, action, tau=None):
         chex.assert_equal_rank([state, action])
+        emb = LayerNormTanhEmb(self.layers[0])
+        state = emb(state)
         x = jnp.concatenate([state, action], -1)
         mlp = MLP(self.layers + (1,), self.act, self.norm)
         return mlp(x)
@@ -179,7 +201,6 @@ class CriticsEnsemble(hk.Module):
 class Encoder(hk.Module):
     def __init__(self,
                  keys: str,
-                 emb_dim: int,
                  mlp_layers: Layers,
                  pn_layers: Layers,
                  cnn_kernels: Layers,
@@ -191,7 +212,6 @@ class Encoder(hk.Module):
                  ):
         super().__init__(name=name)
         self.keys = keys
-        self.emb_dim = emb_dim
         self.mlp_layers = tuple(mlp_layers)
         self.pn_layers = tuple(pn_layers)
         self.cnn_kernels = tuple(cnn_kernels)
@@ -212,7 +232,6 @@ class Encoder(hk.Module):
         if mlp_features:
             mlp_features = list(mlp_features.values())
             mlp_features = jnp.concatenate(mlp_features, -1)
-            return mlp_features
             # Also fuse these features with the multidimensional inputs.
             fuse_with = filter(
                 lambda k: re.match(self.feature_fusion, k), obs.keys()
@@ -242,14 +261,7 @@ class Encoder(hk.Module):
         if not outputs:
             raise ValueError(f"No valid {self.keys!r} in {obs.keys()}")
 
-        state = jnp.concatenate(outputs, -1)
-        emb = MLP((self.emb_dim,),
-                  #TODO: remove tanh
-                  act="tanh",
-                  norm=self.norm,
-                  activate_final=True)
-
-        return emb(state)
+        return jnp.concatenate(outputs, -1)
 
     def _cnn(self, x):
         for depth, kernel in zip(self.cnn_depths, self.cnn_kernels):
@@ -337,7 +349,6 @@ def make_networks(cfg: MPOConfig,
         )
         encoder = Encoder(
             cfg.keys,
-            cfg.encoder_emb_dim,
             cfg.mlp_layers,
             cfg.pn_layers,
             cfg.cnn_kernels,
