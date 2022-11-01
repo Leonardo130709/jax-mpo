@@ -352,7 +352,7 @@ def make_networks(cfg: MPOConfig,
             cfg.mlp_layers,
             cfg.pn_layers,
             cfg.cnn_kernels,
-            cfg.cnn_depth,
+            cfg.cnn_depths,
             cfg.activation,
             cfg.normalization,
             cfg.feature_fusion
