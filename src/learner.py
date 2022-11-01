@@ -224,6 +224,7 @@ class MPOLearner:
                 mean_value=jnp.mean(v_t),
                 value_std=jnp.std(v_t),
                 q_value_std=jnp.std(q_t),
+                advantage_gap=q_t.max() - q_t.min(),
                 entropy=fixed_std.entropy(),
                 temperature=temperature,
                 alpha_mean=jnp.mean(alpha_mean),
@@ -248,7 +249,7 @@ class MPOLearner:
             params_grads, dual_grads = grads
 
             params_update, optim_state = optim.update(
-                params_grads, optim_state
+                params_grads, optim_state, params=params
             )
             dual_update, dual_optim_state = dual_optim.update(
                 dual_grads, dual_optim_state
@@ -357,7 +358,7 @@ class MPOLearner:
                 self._client.insert(params, {"weights": 1.})
                 # TODO: restore save.
 
-            if step % 20000 == 0:
+            if step % 40000 == 0:
                 with open(self._cfg.logdir + "/weights.pkl", "wb") as weights:
                     pickle.dump(params, weights)
                 self._client.checkpoint()

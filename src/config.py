@@ -31,18 +31,18 @@ class MPOConfig(Config):
     normalization: str = "layer"
     stop_actor_grad: bool = True
     #   Encoder
-    keys: str = "point_cloud"
+    keys: str = "observations"
     encoder_emb_dim: int = 64
     mlp_layers: tuple[int] = ()
     pn_layers: tuple[int] = (256, 256, 256)
     cnn_kernels: tuple[int] = (4, 4, 4, 4)
-    cnn_depth: tuple[int] = (48, 48, 48, 48)
+    cnn_depth: tuple[int] = (32, 32, 32, 32)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_backend: str = "gpu"
+    actor_backend: str = "cpu"
     actor_layers: tuple[int] = (512, 512, 512, 512)
-    min_std: float = 1e-2
-    init_std: float = 1.
+    min_std: float = 0.
+    init_std: float = .5
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
@@ -51,7 +51,7 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 256
+    samples_per_insert: int = 128
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -59,7 +59,7 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 5e-4
+    learning_rate: float = 3e-4
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999

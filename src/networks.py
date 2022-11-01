@@ -1,4 +1,4 @@
-from typing import NamedTuple, Callable, Iterable, Dict, Tuple
+from typing import NamedTuple, Callable, Iterable, Dict, Tuple, Optional
 import re
 
 import jax
@@ -12,6 +12,7 @@ from dm_env import specs
 from src.config import MPOConfig
 
 tfd = tfp.distributions
+Layers = Iterable[int]
 
 
 def get_act(name: str) -> Callable[[jnp.ndarray], jnp.ndarray]:
@@ -42,19 +43,18 @@ class NormLayer(hk.Module):
 
 class MLP(hk.Module):
     """MLP w/o dropout but with preactivation normalization.
-
-    Weights and biases initialization is the haiku default: trunc_normal.
+    Weights and biases initialization are the haiku default: trunc_normal.
     """
 
     def __init__(self,
-                 layers: Iterable[int],
-                 act: str = "elu",
-                 norm: str = "none",
+                 output_sizes: Layers,
+                 act: str,
+                 norm: str,
                  activate_final: bool = False,
-                 name: str = None
+                 name: Optional[str] = None
                  ):
         super().__init__(name=name)
-        output_sizes = tuple(layers)
+        output_sizes = tuple(output_sizes)
         num_layers = len(output_sizes)
         layers = []
 
@@ -73,7 +73,7 @@ class MLP(hk.Module):
 class Actor(hk.Module):
     def __init__(self,
                  action_spec: specs.BoundedArray,
-                 layers: Iterable[int],
+                 layers: Layers,
                  act: str = "elu",
                  norm: str = "none",
                  min_std: float = 0.1,
@@ -93,14 +93,14 @@ class Actor(hk.Module):
         since tfd.Distribution doesn't play nicely with jax.vmap."""
         mlp = MLP(self.layers, self.act, self.norm, activate_final=True)
         out = hk.Linear(2 * self.act_dim,
-                        w_init=jnp.zeros,
-                        b_init=hk.initializers.Constant(self._log_init_std)
+                        w_init=hk.initializers.RandomNormal(stddev=1e-2),
+                        b_init=jnp.zeros
                         )
         x = mlp(state)
         x = out(x)
         mean, std = jnp.split(x, 2, -1)
         mean = jnp.tanh(mean)
-        std = jax.nn.softplus(std) + self.min_std
+        std = jax.nn.softplus(std + self._log_init_std) + self.min_std
         return mean, std
 
 
@@ -180,10 +180,10 @@ class Encoder(hk.Module):
     def __init__(self,
                  keys: str,
                  emb_dim: int,
-                 mlp_layers: Iterable[int],
-                 pn_layers: Iterable[int],
-                 cnn_kernels: Iterable[int],
-                 cnn_depths: Iterable[int],
+                 mlp_layers: Layers,
+                 pn_layers: Layers,
+                 cnn_kernels: Layers,
+                 cnn_depths: Layers,
                  act: str,
                  norm: str,
                  feature_fusion: str = "none",
@@ -212,6 +212,7 @@ class Encoder(hk.Module):
         if mlp_features:
             mlp_features = list(mlp_features.values())
             mlp_features = jnp.concatenate(mlp_features, -1)
+            return mlp_features
             # Also fuse these features with the multidimensional inputs.
             fuse_with = filter(
                 lambda k: re.match(self.feature_fusion, k), obs.keys()
@@ -222,13 +223,13 @@ class Encoder(hk.Module):
                 source_ndim = obs[key].ndim
                 chex.assert_scalar_non_negative(source_ndim - 2)
                 source = sources[source_ndim - 2]
-                feat = source[key]
-                tiled_feat = jnp.tile(
+                source_feat = source[key]
+                tiled_mlp_feat = jnp.tile(
                     mlp_features,
-                    reps=feat.shape[:-1] + (1,)
+                    reps=source_feat.shape[:-1] + (1,)
                 )
                 source[key] = jnp.concatenate(
-                    [feat, tiled_feat], -1
+                    [source_feat, tiled_mlp_feat], -1
                 )
 
             if not fuse_with:
@@ -243,6 +244,7 @@ class Encoder(hk.Module):
 
         state = jnp.concatenate(outputs, -1)
         emb = MLP((self.emb_dim,),
+                  #TODO: remove tanh
                   act="tanh",
                   norm=self.norm,
                   activate_final=True)
@@ -251,6 +253,7 @@ class Encoder(hk.Module):
 
     def _cnn(self, x):
         for depth, kernel in zip(self.cnn_depths, self.cnn_kernels):
+            # TODO: don't forget 2 ** i * self._depth
             x = hk.Conv2D(depth, kernel, 2)(x)
             x = NormLayer(self.norm)(x)
             x = get_act(self.act)(x)
