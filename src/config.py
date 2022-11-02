@@ -40,7 +40,7 @@ class MPOConfig(Config):
     cnn_depths: tuple[int] = (32, 32, 32, 32)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_backend: str = "cpu"
+    actor_backend: str = "gpu"
     actor_layers: tuple[int] = (256, 256)
     min_std: float = 0.
     init_std: float = .5
@@ -66,12 +66,12 @@ class MPOConfig(Config):
     adam_b2: float = .999
     adam_eps: float = 1e-5
     weight_decay: float = 1e-6
-    target_actor_update_period: int = 100
+    target_actor_update_period: int = 25
     target_critic_update_period: int = 100
     max_seq_len: int = 25
     eval_every: int = 1e4
     log_every: int = 1e2
-    eval_times: int = 7
+    eval_times: int = 5
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
@@ -79,6 +79,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk_acme_ordinary"
+    logdir: str = "logdir/walker_walk_acme_image"
     total_steps: int = 1e6
     time_limit: int = 1e3

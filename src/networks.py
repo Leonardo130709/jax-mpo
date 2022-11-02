@@ -108,7 +108,7 @@ class Actor(hk.Module):
         x = mlp(state)
         x = out(x)
         mean, std = jnp.split(x, 2, -1)
-        # mean = jnp.tanh(mean)
+        mean = jnp.tanh(mean)
         std = jax.nn.softplus(std + self._log_init_std) + self.min_std
         return mean, std
 
