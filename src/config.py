@@ -16,8 +16,8 @@ class MPOConfig(Config):
     #  MPO.
     tv_constraint: float = 1.
     epsilon_eta: float = .1
-    epsilon_mean: float = 2.5e-3
-    epsilon_std: float = 1e-6
+    epsilon_mean: float = 1e-1
+    epsilon_std: float = 1e-3
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
@@ -28,7 +28,7 @@ class MPOConfig(Config):
 
     # Architecture
     activation: str = "elu"
-    normalization: str = "none"
+    normalization: str = "layer"
     stop_actor_grad: bool = True
     first_layernormtanh: bool = True
     #   Encoder
@@ -47,12 +47,12 @@ class MPOConfig(Config):
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (512, 512, 256)
+    critic_layers: tuple[int] = (512, 512, 512)
     quantile_embedding_dim: int = 64
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 32
+    samples_per_insert: int = 128
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -66,7 +66,7 @@ class MPOConfig(Config):
     adam_b2: float = .999
     adam_eps: float = 1e-5
     weight_decay: float = 0.
-    target_actor_update_period: int = 25
+    target_actor_update_period: int = 100
     target_critic_update_period: int = 100
     max_seq_len: int = 25
     eval_every: int = 1e4
