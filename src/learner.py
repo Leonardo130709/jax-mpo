@@ -226,6 +226,7 @@ class MPOLearner:
                 q_value_std=jnp.std(q_t),
                 advantage_gap=q_t.max() - q_t.min(),
                 entropy=fixed_std.entropy(),
+                pi_stddev=fixed_mean.distribution.stddev(),
                 temperature=temperature,
                 alpha_mean=jnp.mean(alpha_mean),
                 alpha_std=jnp.mean(alpha_std),

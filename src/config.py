@@ -7,7 +7,7 @@ class MPOConfig(Config):
     # Algorithm
     discount: float = .99
     action_repeat: int = 2
-    n_step: int = 3
+    n_step: int = 5
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
@@ -16,8 +16,8 @@ class MPOConfig(Config):
     #  MPO.
     tv_constraint: float = 1.
     epsilon_eta: float = .1
-    epsilon_mean: float = 1e-2
-    epsilon_std: float = 1e-4
+    epsilon_mean: float = 2.5e-3
+    epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
@@ -28,8 +28,9 @@ class MPOConfig(Config):
 
     # Architecture
     activation: str = "elu"
-    normalization: str = "layer"
+    normalization: str = "none"
     stop_actor_grad: bool = True
+    first_layernormtanh: bool = True
     #   Encoder
     keys: str = "observations"
     mlp_layers: tuple[int] = ()
@@ -42,16 +43,16 @@ class MPOConfig(Config):
     actor_backend: str = "cpu"
     actor_layers: tuple[int] = (256, 256, 256)
     min_std: float = 0.
-    init_std: float = .5
+    init_std: float = .3
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (512, 512, 512)
+    critic_layers: tuple[int] = (512, 512, 256)
     quantile_embedding_dim: int = 64
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 128
+    samples_per_insert: int = 32
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -64,7 +65,7 @@ class MPOConfig(Config):
     adam_b1: float = .9
     adam_b2: float = .999
     adam_eps: float = 1e-5
-    weight_decay: float = 1e-6
+    weight_decay: float = 0.
     target_actor_update_period: int = 25
     target_critic_update_period: int = 100
     max_seq_len: int = 25
@@ -78,6 +79,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk_layertanh"
+    logdir: str = "logdir/walker_walk_acme"
     total_steps: int = 1e6
     time_limit: int = 1e3

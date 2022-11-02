@@ -18,6 +18,8 @@ Layers = Iterable[int]
 def get_act(name: str) -> Callable[[jnp.ndarray], jnp.ndarray]:
     if name == "none":
         return lambda x: x
+    elif hasattr(jax.lax, name):
+        return getattr(jax.lax, name)
     elif hasattr(jax.nn, name):
         return getattr(jax.nn, name)
     elif hasattr(jax, name):
@@ -50,6 +52,7 @@ class MLP(hk.Module):
                  output_sizes: Layers,
                  act: str,
                  norm: str,
+                 first_layertanh: bool = False,
                  activate_final: bool = False,
                  name: Optional[str] = None
                  ):
@@ -60,7 +63,10 @@ class MLP(hk.Module):
 
         for i, output_size in enumerate(output_sizes):
             layers.append(hk.Linear(output_size))
-            if i < (num_layers - 1) or activate_final:
+            if i == 0 and first_layertanh:
+                layers.append(NormLayer("layer"))
+                layers.append(jax.lax.tanh)
+            elif i < (num_layers - 1) or activate_final:
                 layers.append(NormLayer(norm))
                 layers.append(get_act(act))
 
@@ -68,20 +74,6 @@ class MLP(hk.Module):
 
     def __call__(self, x):
         return self._mlp(x)
-
-
-class LayerNormTanhEmb(hk.Module):
-    def __init__(self, output_dim: int, name: Optional[str] = None):
-        super().__init__(name=name)
-        self.output_dim = output_dim
-
-    def __call__(self, x):
-        emb = MLP(output_sizes=(self.output_dim,),
-                  act=jax.lax.tanh,
-                  norm="layer",
-                  activate_final=True,
-                  )
-        return emb(x)
 
 
 class Actor(hk.Module):
@@ -92,6 +84,7 @@ class Actor(hk.Module):
                  norm: str = "none",
                  min_std: float = 0.1,
                  init_std: float = 1.,
+                 first_layertanh: bool = False,
                  name: str = "actor"
                  ):
         super().__init__(name=name)
@@ -100,19 +93,19 @@ class Actor(hk.Module):
         self.act = act
         self.norm = norm
         self.min_std = min_std
+        self.first_layertanh = first_layertanh
         self._log_init_std = jnp.log(jnp.exp(init_std - min_std) - 1.)
 
     def __call__(self, state):
         """Actor returns params instead of a distribution itself
         since tfd.Distribution doesn't play nicely with jax.vmap."""
-        emb = LayerNormTanhEmb(self.layers[0])(state)
-        mlp = MLP(self.layers[1:], self.act, self.norm, activate_final=True)
+        mlp = MLP(self.layers, self.act, self.norm,
+                  activate_final=True, first_layertanh=self.first_layertanh)
         out = hk.Linear(2 * self.act_dim,
                         w_init=hk.initializers.RandomNormal(stddev=1e-4),
                         b_init=jnp.zeros
                         )
-        x = emb(state)
-        x = mlp(x)
+        x = mlp(state)
         x = out(x)
         mean, std = jnp.split(x, 2, -1)
         mean = jnp.tanh(mean)
@@ -143,25 +136,26 @@ class DistributionalCritic(hk.Module):
                  quantile_embedding_dim: int,
                  act: str = "elu",
                  norm: str = "none",
+                 first_layertanh: bool = False,
                  name: str = "critic"
                  ):
         super().__init__(name=name)
         self.layers = tuple(layers)
         self.act = act
         self.norm = norm
+        self.first_layertanh = first_layertanh
         self.quantile_embedding_dim = quantile_embedding_dim
 
     def __call__(self, state, action, tau):
         chex.assert_equal_rank([state, action, tau])
 
-        emb = LayerNormTanhEmb(self.layers[0])
-        state = emb(state)
         x = jnp.concatenate([state, action], -1)
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
         x = jnp.expand_dims(x, -2)
         x = jnp.repeat(x, tau.shape[-2], -2)
         x *= (1 + tau)
-        mlp = MLP(self.layers[1:] + (1,), self.act, self.norm)
+        mlp = MLP(self.layers + (1,), self.act, self.norm,
+                  first_layertanh=self.first_layertanh)
         return mlp(x)
 
 
@@ -169,10 +163,9 @@ class Critic(DistributionalCritic):
     """Ordinary MLP critic."""
     def __call__(self, state, action, tau=None):
         chex.assert_equal_rank([state, action])
-        emb = LayerNormTanhEmb(self.layers[0])
-        state = emb(state)
         x = jnp.concatenate([state, action], -1)
-        mlp = MLP(self.layers + (1,), self.act, self.norm)
+        mlp = MLP(self.layers + (1,), self.act, self.norm,
+                  first_layertanh=self.first_layertanh)
         return mlp(x)
 
 
@@ -345,7 +338,8 @@ def make_networks(cfg: MPOConfig,
             cfg.activation,
             cfg.normalization,
             cfg.min_std,
-            cfg.init_std
+            cfg.init_std,
+            cfg.first_layernormtanh
         )
         encoder = Encoder(
             cfg.keys,
@@ -363,7 +357,8 @@ def make_networks(cfg: MPOConfig,
             cfg.critic_layers,
             cfg.quantile_embedding_dim,
             cfg.activation,
-            cfg.normalization
+            cfg.normalization,
+            cfg.first_layernormtanh
         )
 
         def init():
