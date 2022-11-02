@@ -16,11 +16,11 @@ class MPOConfig(Config):
     #  MPO.
     tv_constraint: float = 1.
     epsilon_eta: float = .1
-    epsilon_mean: float = 1e-1
-    epsilon_std: float = 1e-3
+    epsilon_mean: float = 1e-3
+    epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
-    init_log_alpha_std: float = 100.
+    init_log_alpha_std: float = 1000.
     #  HER.
     hindsight_goal_key: str = r"$^"
     augmentation_strategy: str = "none"
@@ -43,11 +43,11 @@ class MPOConfig(Config):
     actor_backend: str = "gpu"
     actor_layers: tuple[int] = (256, 256)
     min_std: float = 0.
-    init_std: float = .5
+    init_std: float = .3
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (512, 512)
+    critic_layers: tuple[int] = (512, 512, 256)
     quantile_embedding_dim: int = 64
 
     # reverb

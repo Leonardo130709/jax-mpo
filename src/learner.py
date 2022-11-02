@@ -184,9 +184,9 @@ class MPOLearner:
                 )
 
             mean, std = networks.actor(params, s_t)
-            fixed_mean, fixed_std = map(sg, (mean, std))
-            fixed_mean = networks.make_policy(fixed_mean, std)
-            fixed_std = networks.make_policy(mean, fixed_std)
+            target_mean, target_std = target_policy_params
+            fixed_mean = networks.make_policy(target_mean, std)
+            fixed_std = networks.make_policy(mean, target_std)
 
             def policy_loss(online_dist,
                             duals,
@@ -226,7 +226,7 @@ class MPOLearner:
                 q_value_std=jnp.std(q_t),
                 advantage_gap=q_t.max() - q_t.min(),
                 entropy=fixed_std.entropy(),
-                pi_stddev=jnp.mean(fixed_mean.distribution.stddev()),
+                pi_stddev=jnp.mean(std),
                 temperature=temperature,
                 alpha_mean=jnp.mean(alpha_mean),
                 alpha_std=jnp.mean(alpha_std),
