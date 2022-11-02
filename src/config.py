@@ -6,12 +6,12 @@ from rltools.config import Config
 class MPOConfig(Config):
     # Algorithm
     discount: float = .99
-    action_repeat: int = 2
-    n_step: int = 5
+    action_repeat: int = 1
+    n_step: int = 3
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
-    num_critic_quantiles: int = 4
+    num_critic_quantiles: int = 8
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
@@ -20,7 +20,7 @@ class MPOConfig(Config):
     epsilon_std: float = 1e-3
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
-    init_log_alpha_std: float = 1000.
+    init_log_alpha_std: float = 100.
     #  HER.
     hindsight_goal_key: str = r"$^"
     augmentation_strategy: str = "none"
@@ -41,18 +41,18 @@ class MPOConfig(Config):
     feature_fusion: str = r"$^"
     #   Actor
     actor_backend: str = "cpu"
-    actor_layers: tuple[int] = (256, 256, 256)
+    actor_layers: tuple[int] = (256, 256)
     min_std: float = 0.
-    init_std: float = .3
+    init_std: float = .5
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (512, 512, 512)
+    critic_layers: tuple[int] = (512, 512)
     quantile_embedding_dim: int = 64
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 128
+    samples_per_insert: int = 256
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -65,7 +65,7 @@ class MPOConfig(Config):
     adam_b1: float = .9
     adam_b2: float = .999
     adam_eps: float = 1e-5
-    weight_decay: float = 0.
+    weight_decay: float = 1e-6
     target_actor_update_period: int = 100
     target_critic_update_period: int = 100
     max_seq_len: int = 25
@@ -79,6 +79,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk_acme"
+    logdir: str = "logdir/walker_walk_acme_ordinary"
     total_steps: int = 1e6
     time_limit: int = 1e3

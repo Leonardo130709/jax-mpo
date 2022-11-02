@@ -1,10 +1,11 @@
 import os
 
 import dm_env
+from dm_env import specs
 import jax
-from dm_env.specs import Array
 import numpy as np
-# import PIL
+import gym
+
 from src import GOAL_KEY
 
 
@@ -67,7 +68,7 @@ class DMC(dm_env.Environment):
             obs_spec = jax.tree_util.tree_map(
                 _replace_shape,
                 obs_spec,
-                is_leaf=lambda x: isinstance(x, dm_env.specs.Array)
+                is_leaf=lambda x: isinstance(x, specs.Array)
             )
             # obs_spec[GOAL_KEY] = obs_spec["target_position"]
         # obs_spec.update(
@@ -94,6 +95,37 @@ class DMC(dm_env.Environment):
         return obs
 
 
-# class UR5(dm_env.Environment):
-#     def __init__(self, size):
-#         from ur_env.remote import RemoteEnvClient
+class UR5(dm_env.Environment):
+    def __init__(self,
+                 size: tuple[int, int],
+                 ):
+        from ur_env.remote import RemoteEnvClient
+        self._env = RemoteEnvClient(("localhost", "4444"))
+
+    def action_spec(self):
+        act_spec = self._env.action_space
+        return specs.BoundedArray(
+            act_spec.shape, act_spec.dtype, act_spec.low, act_spec.high)
+
+    def observation_spec(self):
+        obs_spec = self._env.observation_space
+        return jax.tree_map(
+            lambda sp: specs.Array(sp.shape, sp.dtype), obs_spec,
+            is_leaf=lambda x: isinstance(x, gym.spaces.Box)
+        )
+
+    def reset(self):
+        obs = self._env.reset()
+        return dm_env.TimeStep(
+            observation=obs, reward=0, discount=1,
+            step_type=dm_env.StepType.FIRST
+        )
+
+    def step(self, action):
+        obs, reward, done, _ = self._env.step(action)
+        return dm_env.TimeStep(
+            observation=obs,
+            reward=reward,
+            discount=float(not done),
+            step_type=dm_env.StepType.LAST if done else dm_env.StepType.MID
+        )

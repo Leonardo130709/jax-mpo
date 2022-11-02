@@ -4,12 +4,10 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
-import jax
 import reverb
 
 from src.builder import Builder
 from src.config import MPOConfig
-jax.config.update("jax_disable_jit", True)
 
 
 def run_actor(builder, server_address):

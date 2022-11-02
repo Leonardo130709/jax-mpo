@@ -130,13 +130,19 @@ class Builder:
             env = envs.DMC(task, seed, (64, 64), 0, self.cfg.pn_number)
             env = dmc_wrappers.ActionRepeat(env, self.cfg.action_repeat)
             env = dmc_wrappers.ActionRescale(env)
+        elif domain == "ur":
+            from ur_env.remote import RemoteEnvClient
+            address = ()
+            env = RemoteEnvClient(address)
+            env = dmc_wrappers.GymToDmc(env)
+            env = dmc_wrappers.ActionRescale(env)
         else:
             raise NotImplementedError
 
         env_specs = EnvironmentSpecs(
             observation_spec=env.observation_spec(),
             action_spec=env.action_spec(),
-            reward_spec=env.reward_spec(),
-            discount_spec=env.discount_spec()
+            reward_spec=specs.Array((), float),
+            discount_spec=specs.BoundedArray((), float, 0., 1.)
         )
         return env, env_specs
