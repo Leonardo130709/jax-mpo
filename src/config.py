@@ -11,7 +11,7 @@ class MPOConfig(Config):
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
-    num_critic_quantiles: int = 8
+    num_critic_quantiles: int = 4
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
@@ -29,8 +29,6 @@ class MPOConfig(Config):
     # Architecture
     activation: str = "elu"
     normalization: str = "layer"
-    stop_actor_grad: bool = True
-    first_layernormtanh: bool = True
     #   Encoder
     keys: str = "image"
     mlp_layers: tuple[int] = ()
@@ -41,13 +39,13 @@ class MPOConfig(Config):
     feature_fusion: str = r"$^"
     #   Actor
     actor_backend: str = "gpu"
-    actor_layers: tuple[int] = (256, 256, 256)
+    actor_layers: tuple[int] = (64, 1024, 1024)
     min_std: float = 0.
-    init_std: float = .5
+    init_std: float = .7
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (512, 512, 256)
+    critic_layers: tuple[int] = (64, 1024, 1024)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -66,7 +64,7 @@ class MPOConfig(Config):
     adam_b2: float = .999
     adam_eps: float = 1e-5
     weight_decay: float = 1e-6
-    target_actor_update_period: int = 100
+    target_actor_update_period: int = 25
     target_critic_update_period: int = 100
     max_seq_len: int = 25
     eval_every: int = 1e4
@@ -79,6 +77,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk_fixed_image"
+    logdir: str = "logdir/walker_walk_drq"
     total_steps: int = 1e6
     time_limit: int = 1e3

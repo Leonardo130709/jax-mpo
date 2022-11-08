@@ -71,11 +71,11 @@ class DMC(dm_env.Environment):
                 is_leaf=lambda x: isinstance(x, specs.Array)
             )
             # obs_spec[GOAL_KEY] = obs_spec["target_position"]
-        # obs_spec.update(
+        obs_spec.update(
         #     depth_map=Array(self.size + (1,), np.float32),
         #     point_cloud=Array((self.pn_number, 3), np.float32),
-        #     image=specs.Array(self.size + (3,), np.uint8)
-        # )
+            image=specs.Array(self.size + (3,), np.uint8)
+        )
         return obs_spec
 
     def _update_obs(self, obs):
@@ -83,7 +83,6 @@ class DMC(dm_env.Environment):
             for k, v in obs.items():
                 obs[k] = v.flatten()
             # obs[GOAL_KEY] = obs["target_position"]
-        return obs
         physics = self._env.physics
         # depth_map = physics.render(*self.size, camera_id=self.camera, depth=True)
         # depth_map = depth_map[..., None]

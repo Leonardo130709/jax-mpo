@@ -52,7 +52,6 @@ def main():
                          args=(builder, server_address, env_specs)
                          )
     server.start()
-    # run_actor(builder, server_address, env, env_specs)
     actor.start()
     learner.start()
 
