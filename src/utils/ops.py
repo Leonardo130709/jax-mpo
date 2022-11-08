@@ -117,10 +117,3 @@ def temperature_loss_and_normalized_weights(
 def softplus(param):
     param = jnp.maximum(param, -18.)
     return jax.nn.softplus(param) + 1e-8
-
-
-@tfd.RegisterKL(tfd.TruncatedNormal, tfd.TruncatedNormal)
-def _kl_trunc_trunc(dist_a, dist_b, name=None):
-    # Duct tape. Returns wrong KL.
-    norm_kl = tfd.kullback_leibler._DIVERGENCES[(tfd.Normal, tfd.Normal)]
-    return norm_kl(dist_a, dist_b, name=name)

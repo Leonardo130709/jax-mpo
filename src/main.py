@@ -10,9 +10,8 @@ from src.builder import Builder
 from src.config import MPOConfig
 
 
-def run_actor(builder, server_address):
+def run_actor(builder, server_address, env, env_specs):
     prepare_logdir(builder.cfg)
-    env, env_specs = builder.make_env()
     client = reverb.Client(server_address)
     actor = builder.make_actor(env, env_specs, client)
     actor.run()
@@ -47,12 +46,13 @@ def main():
                         args=(builder, env_specs)
                         )
     actor = mp.Process(target=run_actor,
-                       args=(builder, server_address)
+                       args=(builder, server_address, env, env_specs)
                        )
     learner = mp.Process(target=run_learner,
-                         args=(builder, server_address, env_specs)
+                         args=(builder, server_address, None)
                          )
     server.start()
+    # run_actor(builder, server_address, env, env_specs)
     actor.start()
     learner.start()
 

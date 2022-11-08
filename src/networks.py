@@ -153,10 +153,9 @@ class DistributionalCritic(hk.Module):
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
         x = jnp.expand_dims(x, -2)
         x = jnp.repeat(x, tau.shape[-2], -2)
-        x *= (1 + tau)
         mlp = MLP(self.layers + (1,), self.act, self.norm,
                   first_layertanh=self.first_layertanh)
-        return mlp(x)
+        return mlp(x * tau)
 
 
 class Critic(DistributionalCritic):
@@ -216,10 +215,9 @@ class Encoder(hk.Module):
     def __call__(self, obs: Dict[str, jnp.ndarray]) -> jnp.ndarray:
         """Works with unbatched inputs,
         since there are jax.vmap and hk.BatchApply."""
+        obs = {k: v for k, v in obs.items() if re.match(self.keys, k)}
         chex.assert_rank(list(obs.values()), {1, 2, 3})
-        mlp_features, pn_features, cnn_features = _ndim_partition(
-            {k: v for k, v in obs.items() if re.match(self.keys, k)}
-        )
+        mlp_features, pn_features, cnn_features = _ndim_partition(obs)
         outputs = []
 
         if mlp_features:

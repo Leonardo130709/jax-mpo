@@ -64,7 +64,9 @@ class MPOLearner:
                       "weights.")
                 _params = jax.device_put(_params)
 
-        act_dim = env_spec.action_spec.shape[0]
+        # TODO: remote env specs are problematic to create, so here duct tape.
+        # act_dim = env_spec.action_spec.shape[0]
+        act_dim = _params["actor/linear"]["b"].size
         _dual_params = Duals(
             log_temperature=jnp.array(cfg.init_log_temperature),
             log_alpha_mean=jnp.full(act_dim, cfg.init_log_alpha_mean),
