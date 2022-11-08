@@ -32,7 +32,7 @@ class MPOConfig(Config):
     stop_actor_grad: bool = True
     first_layernormtanh: bool = True
     #   Encoder
-    keys: str = r".*"
+    keys: str = "image"
     mlp_layers: tuple[int] = ()
     pn_number: int = 500
     pn_layers: tuple[int] = (64, 128, 256)
@@ -40,7 +40,7 @@ class MPOConfig(Config):
     cnn_depths: tuple[int] = (32, 32, 32, 32)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_backend: str = "cpu"
+    actor_backend: str = "gpu"
     actor_layers: tuple[int] = (256, 256, 256)
     min_std: float = 0.
     init_std: float = .5
@@ -52,7 +52,7 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 64
+    samples_per_insert: int = 256
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -79,6 +79,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk_fixed"
+    logdir: str = "logdir/walker_walk_fixed_image"
     total_steps: int = 1e6
     time_limit: int = 1e3

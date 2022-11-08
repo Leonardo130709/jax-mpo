@@ -4,23 +4,16 @@ import dm_env
 import jax
 import reverb
 import numpy as np
-from dm_env import specs
 import tensorflow as tf
 tf.config.set_visible_devices([], "GPU")
 
 from rltools import dmc_wrappers
+from rltools.dmc_wrappers import EnvironmentSpecs
 from src.config import MPOConfig
 from src.actor import Actor
 from src.networks import make_networks
 from src.learner import MPOLearner
 from src.utils import envs
-
-
-class EnvironmentSpecs(NamedTuple):
-    observation_spec: Mapping[str, specs.Array]
-    action_spec: specs.BoundedArray
-    reward_spec: specs.Array
-    discount_spec: specs.BoundedArray
 
 
 class Builder:
@@ -137,10 +130,4 @@ class Builder:
         else:
             raise NotImplementedError
 
-        env_specs = EnvironmentSpecs(
-            observation_spec=env.observation_spec(),
-            action_spec=env.action_spec(),
-            reward_spec=env.reward_spec(),
-            discount_spec=env.discount_spec()
-        )
-        return env, env_specs
+        return env, env.environment_specs

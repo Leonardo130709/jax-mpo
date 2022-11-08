@@ -49,7 +49,7 @@ def main():
                        args=(builder, server_address, env, env_specs)
                        )
     learner = mp.Process(target=run_learner,
-                         args=(builder, server_address, None)
+                         args=(builder, server_address, env_specs)
                          )
     server.start()
     # run_actor(builder, server_address, env, env_specs)
