@@ -35,7 +35,7 @@ class MPOState(NamedTuple):
     dual_optim_state: optax.OptState
     rng_key: jax.random.PRNGKey
     loss_scale: jmp.LossScale
-    step: Array
+    step: jnp.int32
 
 
 class MPOLearner:
@@ -134,6 +134,7 @@ class MPOLearner:
 
             s_tm1 = networks.encoder(params, o_tm1)
             target_s_t = networks.encoder(target_params, o_t)
+            s_t = target_s_t
 
             target_policy_params = networks.actor(target_params, target_s_t)
             target_dist = networks.make_policy(*target_policy_params)
@@ -182,7 +183,7 @@ class MPOLearner:
                     cfg.tv_constraint
                 )
 
-            mean, std = networks.actor(params, target_s_t)
+            mean, std = networks.actor(params, s_t)
             target_mean, target_std = target_policy_params
             fixed_mean = networks.make_policy(target_mean, std)
             fixed_std = networks.make_policy(mean, target_std)

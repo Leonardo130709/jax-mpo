@@ -6,12 +6,12 @@ from rltools.config import Config
 class MPOConfig(Config):
     # Algorithm
     discount: float = .99
-    action_repeat: int = 2
+    action_repeat: int = 1
     n_step: int = 3
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
-    num_critic_quantiles: int = 4
+    num_critic_quantiles: int = 8
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
@@ -22,7 +22,7 @@ class MPOConfig(Config):
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
     #  HER.
-    hindsight_goal_key: str = r"$^"
+    hindsight_goal_key: str = "point_cloud"
     augmentation_strategy: str = "none"
     num_augmentations: int = 1
 
@@ -30,7 +30,7 @@ class MPOConfig(Config):
     activation: str = "elu"
     normalization: str = "layer"
     #   Encoder
-    keys: str = "image"
+    keys: str = "point_cloud"
     mlp_layers: tuple[int] = ()
     pn_number: int = 500
     pn_layers: tuple[int] = (64, 128, 256)
@@ -43,7 +43,7 @@ class MPOConfig(Config):
     min_std: float = 0.
     init_std: float = .7
     #   Critic
-    use_iqn: bool = False
+    use_iqn: bool = True
     num_critic_heads: int = 2
     critic_layers: tuple[int] = (64, 1024, 1024)
     quantile_embedding_dim: int = 64
@@ -76,7 +76,7 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk_drq"
+    task: str = "ur_task"
+    logdir: str = "logdir/ur_lift"
     total_steps: int = 1e6
     time_limit: int = 1e3
