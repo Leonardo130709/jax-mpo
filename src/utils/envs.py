@@ -1,8 +1,8 @@
 import os
 
 import dm_env
+import tree
 from dm_env import specs
-import jax
 import numpy as np
 import gym
 
@@ -25,8 +25,8 @@ class DMC(dm_env.Environment):
 
         if domain == "manip":
             from dm_control import manipulation
-            self._env = manipulation.load(task + "_features", seed)
             self._is_manip = True
+            self._env = manipulation.load(task, seed)
         else:
             from dm_control import suite
             self._env = suite.load(
@@ -60,29 +60,34 @@ class DMC(dm_env.Environment):
         obs_spec = self._env.observation_spec()
 
         if self._is_manip:
-
-            def _replace_shape(spec):
+            def replace_shape(spec):
                 shape = spec.shape
-                return spec.replace(shape=(np.prod(shape),))
+                return spec.replace(shape=shape[1:])
 
-            obs_spec = jax.tree_util.tree_map(
-                _replace_shape,
-                obs_spec,
-                is_leaf=lambda x: isinstance(x, specs.Array)
+            obs_spec = tree.map_structure(
+                replace_shape,
+                obs_spec.copy(),
             )
+            obs_spec['jaco_arm/joints_pos'] =\
+                obs_spec['jaco_arm/joints_pos'].replace(shape=(12,))
+
             # obs_spec[GOAL_KEY] = obs_spec["target_position"]
-        obs_spec.update(
+        # obs_spec.update(
         #     depth_map=Array(self.size + (1,), np.float32),
         #     point_cloud=Array((self.pn_number, 3), np.float32),
-            image=specs.Array(self.size + (3,), np.uint8)
-        )
+        #     image=specs.Array(self.size + (3,), np.uint8)
+        # )
         return obs_spec
 
     def _update_obs(self, obs):
         if self._is_manip:
             for k, v in obs.items():
-                obs[k] = v.flatten()
+                if k == 'jaco_arm/joints_pos':
+                    obs[k] = v.flatten()
+                else:
+                    obs[k] = np.squeeze(v, 0)
             # obs[GOAL_KEY] = obs["target_position"]
+        return obs
         physics = self._env.physics
         # depth_map = physics.render(*self.size, camera_id=self.camera, depth=True)
         # depth_map = depth_map[..., None]

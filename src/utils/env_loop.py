@@ -58,10 +58,11 @@ def n_step_fn(trajectory: Trajectory,
     )
     length = len(rewards)
     discount_n = discount ** n_step
+    is_not_terminal = res['discounts'][-1]
     next_obs = obs[n_step:] + n_step * [obs[-1]]
     discounts = \
         (length - n_step) * [discount_n] + \
-        [discount ** i for i in range(n_step, 0, -1)]
+        [is_not_terminal * discount ** i for i in range(n_step, 0, -1)]
 
     res["next_observations"] = next_obs
     res["discounts"] = discounts

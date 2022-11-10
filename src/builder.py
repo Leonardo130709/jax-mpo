@@ -123,7 +123,7 @@ class Builder:
             env = dmc_wrappers.ActionRescale(env)
         elif domain == "ur":
             address = ("10.201.2.136", 5555)
-            env = envs.UR5(address)
+            env = envs.UR5(address, (64, 64))
             env = dmc_wrappers.ActionRescale(env)
         else:
             raise NotImplementedError

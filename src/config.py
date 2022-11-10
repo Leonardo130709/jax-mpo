@@ -22,7 +22,7 @@ class MPOConfig(Config):
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
     #  HER.
-    hindsight_goal_key: str = "point_cloud"
+    hindsight_goal_key: str = r"$^"
     augmentation_strategy: str = "none"
     num_augmentations: int = 1
 
@@ -30,7 +30,7 @@ class MPOConfig(Config):
     activation: str = "elu"
     normalization: str = "layer"
     #   Encoder
-    keys: str = "point_cloud"
+    keys: str = r".*"
     mlp_layers: tuple[int] = ()
     pn_number: int = 500
     pn_layers: tuple[int] = (64, 128, 256)
@@ -43,7 +43,7 @@ class MPOConfig(Config):
     min_std: float = 0.
     init_std: float = .7
     #   Critic
-    use_iqn: bool = True
+    use_iqn: bool = False
     num_critic_heads: int = 2
     critic_layers: tuple[int] = (64, 1024, 1024)
     quantile_embedding_dim: int = 64
@@ -76,7 +76,7 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "ur_task"
-    logdir: str = "logdir/ur_lift"
+    task: str = "dmc_manip_reach_duplo_vision"
+    logdir: str = "logdir/manip_reach_vision"
     total_steps: int = 1e6
     time_limit: int = 1e3
