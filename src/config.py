@@ -30,23 +30,24 @@ class MPOConfig(Config):
     activation: str = "elu"
     normalization: str = "layer"
     #   Encoder
-    keys: str = r".*"
+    keys: str = "image"
     mlp_layers: tuple[int] = ()
-    pn_number: int = 500
+    pn_number: int = 1000
+    img_size: tuple[int] = (84, 84)
     pn_layers: tuple[int] = (64, 128, 256)
-    cnn_kernels: tuple[int] = (3, 3, 3, 3)
-    cnn_depths: tuple[int] = (32, 32, 32, 32)
-    cnn_strides: tuple[int] = (2, 1, 1, 1)
+    cnn_kernels: tuple[int] = (8, 4, 3)
+    cnn_depths: tuple[int] = (32, 64, 64)
+    cnn_strides: tuple[int] = (4, 2, 1)
     feature_fusion: str = r"$^"
     #   Actor
     actor_backend: str = "gpu"
-    actor_layers: tuple[int] = (64, 1024, 1024)
+    actor_layers: tuple[int] = (64, 256, 256)
     min_std: float = 0.
     init_std: float = .5
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (64, 1024, 1024)
+    critic_layers: tuple[int] = (64, 512, 512)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -77,7 +78,7 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "dmc_manip_reach_duplo_vision"
-    logdir: str = "logdir/manip_reach_vision"
+    task: str = "dmc_walker_walk"
+    logdir: str = "logdir/walker_walk_mnih"
     total_steps: int = 1e6
     time_limit: int = 1e3

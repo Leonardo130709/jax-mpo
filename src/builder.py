@@ -114,12 +114,12 @@ class Builder:
         seed = np.random.RandomState(seed)
         domain, task = self.cfg.task.split("_", 1)
         if domain == "dmc":
-            env = envs.DMC(task, seed, (64, 64), 0, self.cfg.pn_number)
+            env = envs.DMC(task, seed, self.cfg.img_size, 0, self.cfg.pn_number)
             env = dmc_wrappers.ActionRepeat(env, self.cfg.action_repeat)
             env = dmc_wrappers.ActionRescale(env)
         elif domain == "ur":
             address = ("10.201.2.136", 5555)
-            env = envs.UR5(address, (64, 64))
+            env = envs.UR5(address, self.cfg.img_size)
             env = dmc_wrappers.ActionRescale(env)
         else:
             raise NotImplementedError

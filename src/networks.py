@@ -255,7 +255,8 @@ class Encoder(hk.Module):
     def _cnn(self, x):
         gen = zip(self.cnn_depths, self.cnn_kernels, self.cnn_strides)
         for i, (depth, kernel, stride) in enumerate(gen):
-            x = hk.Conv2D(depth, kernel, stride, name=f"cnn_conv_{i}",
+            x = hk.Conv2D(depth, kernel, stride,
+                          name=f"cnn_conv_{i}", padding="valid",
                           w_init=hk.initializers.Orthogonal(),
                           )(x)
             x = NormLayer(self.norm, name=f"cnn_norm_{i}")(x)
