@@ -148,8 +148,8 @@ class DistributionalCritic(hk.Module):
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
         x = jnp.expand_dims(x, -2)
         x = jnp.repeat(x, tau.shape[-2], -2)
-        # x = jnp.concatenate([x, tau], -1)
-        x *= tau
+        x = jnp.concatenate([x, tau], -1)
+        # x *= tau
         mlp = MLP(self.layers[1:] + (1,), self.act, self.norm)
         return mlp(x)
 

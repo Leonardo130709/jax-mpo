@@ -11,7 +11,7 @@ class MPOConfig(Config):
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
-    num_critic_quantiles: int = 8
+    num_critic_quantiles: int = 4
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
@@ -35,19 +35,19 @@ class MPOConfig(Config):
     pn_number: int = 1000
     img_size: tuple[int] = (84, 84)
     pn_layers: tuple[int] = (64, 128, 256)
-    cnn_kernels: tuple[int] = (8, 4, 3)
-    cnn_depths: tuple[int] = (32, 64, 64)
-    cnn_strides: tuple[int] = (4, 2, 1)
+    cnn_depths: tuple[int] = (32, 32, 32, 32)
+    cnn_kernels: tuple[int] = (3, 3, 3, 3)
+    cnn_strides: tuple[int] = (2, 1, 1, 1)
     feature_fusion: str = r"$^"
     #   Actor
     actor_backend: str = "gpu"
-    actor_layers: tuple[int] = (64, 256, 256)
+    actor_layers: tuple[int] = (64, 1024, 1024)
     min_std: float = 0.
-    init_std: float = .5
+    init_std: float = .7
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (64, 512, 512)
+    critic_layers: tuple[int] = (64, 1024, 1024)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -79,6 +79,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk_mnih"
+    logdir: str = "logdir/walker_walk_drqv2"
     total_steps: int = 1e6
     time_limit: int = 1e3
