@@ -6,7 +6,7 @@ from rltools.config import Config
 class MPOConfig(Config):
     # Algorithm
     discount: float = .99
-    action_repeat: int = 1
+    action_repeat: int = 2
     n_step: int = 3
     #  IQN.
     num_actions: int = 20
@@ -34,14 +34,15 @@ class MPOConfig(Config):
     mlp_layers: tuple[int] = ()
     pn_number: int = 500
     pn_layers: tuple[int] = (64, 128, 256)
-    cnn_kernels: tuple[int] = (4, 4, 4, 4)
+    cnn_kernels: tuple[int] = (3, 3, 3, 3)
     cnn_depths: tuple[int] = (32, 32, 32, 32)
+    cnn_strides: tuple[int] = (2, 1, 1, 1)
     feature_fusion: str = r"$^"
     #   Actor
     actor_backend: str = "gpu"
     actor_layers: tuple[int] = (64, 1024, 1024)
     min_std: float = 0.
-    init_std: float = .7
+    init_std: float = .5
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
@@ -49,7 +50,7 @@ class MPOConfig(Config):
     quantile_embedding_dim: int = 64
 
     # reverb
-    min_replay_size: int = 1e3
+    min_replay_size: int = 2e3
     samples_per_insert: int = 256
     batch_size: int = 256
     buffer_capacity: int = 1e6

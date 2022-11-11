@@ -1,8 +1,8 @@
 import os
 
 import dm_env
-import tree
 from dm_env import specs
+import jax
 import numpy as np
 import gym
 
@@ -64,9 +64,10 @@ class DMC(dm_env.Environment):
                 shape = spec.shape
                 return spec.replace(shape=shape[1:])
 
-            obs_spec = tree.map_structure(
+            obs_spec = jax.tree_util.tree_map(
                 replace_shape,
                 obs_spec.copy(),
+                is_leaf=lambda sp: isinstance(sp, specs.Array)
             )
             obs_spec['jaco_arm/joints_pos'] =\
                 obs_spec['jaco_arm/joints_pos'].replace(shape=(12,))

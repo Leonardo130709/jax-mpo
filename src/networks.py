@@ -193,6 +193,7 @@ class Encoder(hk.Module):
                  pn_layers: Layers,
                  cnn_kernels: Layers,
                  cnn_depths: Layers,
+                 cnn_strides: Layers,
                  act: str,
                  norm: str,
                  feature_fusion: str = "none",
@@ -204,6 +205,7 @@ class Encoder(hk.Module):
         self.pn_layers = tuple(pn_layers)
         self.cnn_kernels = tuple(cnn_kernels)
         self.cnn_depths = tuple(cnn_depths)
+        self.cnn_strides = tuple(cnn_strides)
         self.act = act
         self.norm = norm
         self.feature_fusion = feature_fusion
@@ -251,9 +253,9 @@ class Encoder(hk.Module):
         return jnp.concatenate(outputs, -1)
 
     def _cnn(self, x):
-        gen = enumerate(zip(self.cnn_depths, self.cnn_kernels))
-        for i, (depth, kernel) in gen:
-            x = hk.Conv2D(depth, kernel, 2, name=f"cnn_conv_{i}",
+        gen = zip(self.cnn_depths, self.cnn_kernels, self.cnn_strides)
+        for i, (depth, kernel, stride) in enumerate(gen):
+            x = hk.Conv2D(depth, kernel, stride, name=f"cnn_conv_{i}",
                           w_init=hk.initializers.Orthogonal(),
                           )(x)
             x = NormLayer(self.norm, name=f"cnn_norm_{i}")(x)
@@ -344,6 +346,7 @@ def make_networks(cfg: MPOConfig,
             cfg.pn_layers,
             cfg.cnn_kernels,
             cfg.cnn_depths,
+            cfg.cnn_strides,
             cfg.activation,
             cfg.normalization,
             cfg.feature_fusion

@@ -58,7 +58,7 @@ def n_step_fn(trajectory: Trajectory,
     )
     length = len(rewards)
     discount_n = discount ** n_step
-    is_not_terminal = res['discounts'][-1]
+    is_not_terminal = disc[-1]
     next_obs = obs[n_step:] + n_step * [obs[-1]]
     discounts = \
         (length - n_step) * [discount_n] + \
@@ -106,6 +106,7 @@ def goal_augmentation(trajectory: Trajectory,
     elif strategy == "future":
         discounts = discount * np.asarray(trajectory["discounts"])
         term_idx = sample_from_geometrical(rng, discounts, amount)
+        term_idx = np.clip(term_idx, a_max=len(discounts) - 1, a_min=2)
         for i in term_idx.tolist():
             tr = tree_slice(
                 slice(0, i), trajectory,
