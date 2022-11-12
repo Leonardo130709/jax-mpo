@@ -233,6 +233,7 @@ class MPOLearner:
                 temperature_loss=temperature_loss,
                 total_loss=total_loss,
                 mean_reward=r_t / self._cfg.n_step / self._cfg.action_repeat,
+                mean_discount=discount_t
             )
             metrics.update(metrics_mean)
             metrics.update(metrics_std)

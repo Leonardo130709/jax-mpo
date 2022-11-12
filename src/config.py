@@ -1,6 +1,8 @@
 import dataclasses
 from rltools.config import Config
 
+Layers = tuple[int, ...]
+
 
 @dataclasses.dataclass
 class MPOConfig(Config):
@@ -30,24 +32,24 @@ class MPOConfig(Config):
     activation: str = "elu"
     normalization: str = "layer"
     #   Encoder
-    keys: str = "image"
-    mlp_layers: tuple[int] = ()
+    keys: str = r".*"
+    mlp_layers: Layers = ()
     pn_number: int = 1000
-    img_size: tuple[int] = (84, 84)
-    pn_layers: tuple[int] = (64, 128, 256)
-    cnn_depths: tuple[int] = (32, 32, 32, 32)
-    cnn_kernels: tuple[int] = (3, 3, 3, 3)
-    cnn_strides: tuple[int] = (2, 1, 1, 1)
+    img_size: tuple[int, int] = (84, 84)
+    pn_layers: Layers = (64, 128, 256)
+    cnn_depths: Layers = (32, 32, 32, 32)
+    cnn_kernels: Layers = (4, 4, 4, 4)
+    cnn_strides: Layers = (2, 2, 2, 2)
     feature_fusion: str = r"$^"
     #   Actor
     actor_backend: str = "gpu"
-    actor_layers: tuple[int] = (64, 1024, 1024)
+    actor_layers: Layers = (64, 256, 256, 256)
     min_std: float = 0.
-    init_std: float = .7
+    init_std: float = .5
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: tuple[int] = (64, 1024, 1024)
+    critic_layers: Layers = (64, 512, 512, 256)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -78,7 +80,7 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk_drqv2"
+    task: str = "dmc_manip_reach_duplo_vision"
+    logdir: str = "logdir/manip_reach_duplo_vision"
     total_steps: int = 1e6
     time_limit: int = 1e3
