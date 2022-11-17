@@ -6,10 +6,78 @@ Layers = tuple[int, ...]
 
 @dataclasses.dataclass
 class MPOConfig(Config):
+    """
+    Args:
+        discount: MDP discount factor.
+        action_repeat: repeat an action for multiple timesteps.
+        n_step: multistep update w/o off-policy corrections.
+        num_actions: number of actions in the MPO estimation step.
+        num_actor_quantiles: number of quantiles in the distributional policy improvement.
+        num_critic_quantiles: number of quantiles in the distributional policy learning.
+        hubber_delta: threshold for switching between L1 / L2 loss.
+        tv_constraint: clipping in the MPO E-step to prevent rapid policy changes.
+        epsilon_eta:  target KL divergence in the MPO E-step.
+        epsilon_mean: target KL in MPO M-step for mean distribution.
+        epsilon_std: target KL in MPO M-step for stddev distribution.
+        init_log_temperatrue: initial value of MPO E-step loss dual parameter.
+        init_log_alpha_mean: initial value of MPO M-step mean KL dual parameter.
+        init_log_alpha_std: initial value of MPO M-step std KL dual parameter.
+        hindsight_goal_key: source of hindsight goal relabelling.
+        augmentation_strategy: (none, final, future) as in the HER paper.
+        num_augmentations: number of trajectory augmentations.
+        activation: which activation to use for all the networks.
+        normalization: preactivation normalization to use everywhere.
+        keys: valid observations regex filter.
+        mlp_layers: encoder's mlp layers.
+        pn_number: number of points per point cloud observation.
+        img_size: pixels observations shape.
+        pn_layers: encoder's point net layers.
+        cnn_depths: encoder's cnn depths.
+        cnn_kernels: encoder's cnn kernels.
+        cnn_strides: encoder's cnn strides.
+        feature_fusion: regex filter for observations which should be concatenated with lowdim features.
+        actor_backend: gpu or cpu jax.backend.
+        actor_layers: actor's MLP hidden layers.
+        min_std: minimal stddev value of actor's normal policy.
+        init_std: initial stddev value of actor's normal policy.
+        use_iqn: ordinary or distributional critic choice.
+        num_critic_heads: number of critics heads.
+        critic_layers: critic's MLP hidden layers.
+        quantile_embedding_dim: same as in the IQN paper.
+        min_replay_size: required replay size for sampling to begin.
+        samples_per_insert: number of gradient steps per one environment step.
+        batch_size: learner batch_size.
+        buffer_capacity: maximum replay buffer size.
+        actor_update_every: number of steps before fetching new weights.
+        learner_dump_every: number of gradient steps before saving a replay buffer.
+        reverb_port: reverb.Server port.
+        learning_rate: common for all the networks.
+        dual_lr: dual params learning rate.
+        adam_b1: optax.adamw b1.
+        adam_b2: optax.adamw b2.
+        adam_eps: optax.adamw epsion.
+        weight_decay: optax.adamw weight decay.
+        target_actor_update_period: target actor hard update period.
+        target_critic_update_period: target critic hard update period.
+        max_seq_len: max env interaction sequence length before sending transitions to a replay buffer.
+        eval_every: actor evaluation interval.
+        log_every: learner logging interval.
+        eval_times: number of episodes on evalution.
+        grad_norm: global norm grad clipping.
+        mp_policy: mixed precision policy.
+        jit: to jit or not learner step.
+        num_actors: number of distributed actors.
+        seed: random seed.
+        task: rl task.
+        logdir: logging dir.
+        total_steps: maximum number of interactions with the env.
+        time_limit: impose env maximum episode length.
+    """
+
     # Algorithm
     discount: float = .99
-    action_repeat: int = 2
-    n_step: int = 3
+    action_repeat: int = 1
+    n_step: int = 5
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
@@ -42,23 +110,23 @@ class MPOConfig(Config):
     cnn_strides: Layers = (2, 2, 2, 2)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_backend: str = "gpu"
-    actor_layers: Layers = (64, 256, 256, 256)
-    min_std: float = 0.
+    actor_backend: str = "cpu"
+    actor_layers: Layers = (256, 256, 256)
+    min_std: float = .1
     init_std: float = .5
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: Layers = (64, 512, 512, 256)
+    critic_layers: Layers = (512, 512, 256)
     quantile_embedding_dim: int = 64
 
     # reverb
-    min_replay_size: int = 2e3
-    samples_per_insert: int = 256
+    min_replay_size: int = 1e3
+    samples_per_insert: int = 32
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
-    learner_dump_every: int = 1
+    learner_dump_every: int = 40_000
     reverb_port: int = 4445
 
     # training
@@ -73,14 +141,20 @@ class MPOConfig(Config):
     max_seq_len: int = 25
     eval_every: int = 1e4
     log_every: int = 1e2
-    eval_times: int = 7
+    eval_times: int = 15
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
+    num_actors: int = 3
 
     # task
     seed: int = 0
-    task: str = "dmc_manip_reach_duplo_vision"
-    logdir: str = "logdir/manip_reach_duplo_vision"
+    task: str = "dmc_walker_walk"
+    logdir: str = "logdir/mp_test"
     total_steps: int = 1e6
     time_limit: int = 1e3
+
+
+@dataclasses.dataclass
+class FromImageConfig(MPOConfig):
+    """Config to learn from high dim observations."""

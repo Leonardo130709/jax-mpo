@@ -1,3 +1,6 @@
+import multiprocessing as mp
+import pickle
+
 import dm_env
 import jax
 import reverb
@@ -21,6 +24,12 @@ class Builder:
         rng = jax.random.PRNGKey(config.seed)
         self._actor_rng, self._learner_rng, self._env_rng = \
             jax.random.split(rng, 3)
+        try:
+            with open(self.cfg.logdir + "/total_steps", "rb") as f:
+                val = pickle.load(f)
+        except FileNotFoundError:
+            val = 0
+        self._total_steps = mp.Value("i", val)
 
     def make_server(self, env_specs: EnvironmentSpecs):
         networks = self.make_networks(env_specs)
@@ -107,7 +116,8 @@ class Builder:
                    ):
         self._actor_rng, rng_key = jax.random.split(self._actor_rng)
         networks = self.make_networks(env_specs)
-        return Actor(rng_key, env, self.cfg, networks, client)
+        return Actor(rng_key, env, self.cfg,
+                     networks, client, self._total_steps)
 
     def make_env(self):
         self._env_rng, seed = jax.random.split(self._env_rng)
@@ -115,13 +125,13 @@ class Builder:
         domain, task = self.cfg.task.split("_", 1)
         if domain == "dmc":
             env = envs.DMC(task, seed, self.cfg.img_size, 0, self.cfg.pn_number)
-            env = dmc_wrappers.ActionRepeat(env, self.cfg.action_repeat)
-            env = dmc_wrappers.ActionRescale(env)
         elif domain == "ur":
-            address = ("10.201.2.136", 5555)
-            env = envs.UR5(address, self.cfg.img_size)
-            env = dmc_wrappers.ActionRescale(env)
+            assert self.cfg.action_repeat == 1
+            address = ("10.201.2.136", 5553)
+            env = envs.UR5(address, self.cfg.img_size, self.cfg.pn_number)
         else:
             raise NotImplementedError
 
+        env = dmc_wrappers.ActionRepeat(env, self.cfg.action_repeat)
+        env = dmc_wrappers.ActionRescale(env)
         return env, env.environment_specs

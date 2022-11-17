@@ -18,7 +18,8 @@ class DMC(dm_env.Environment):
                  pn_number: int = 1000,
                  ):
         os.environ["MUJOCO_GL"] = "egl"
-        from src.utils.dm_control_pcd_generator import PointCloudGenerator
+        from rltools.dmc_wrappers.utils.point_cloud_generator import \
+            PointCloudGenerator
 
         domain, task = task.split("_", 1)
         self._is_manip = False
@@ -72,11 +73,12 @@ class DMC(dm_env.Environment):
                 obs_spec['jaco_arm/joints_pos'].replace(shape=(12,))
             # obs_spec[GOAL_KEY] = obs_spec["target_position"]
         else:
-            obs_spec.update(
+            # obs_spec.update(
             #     depth_map=Array(self.size + (1,), np.float32),
             #     point_cloud=Array((self.pn_number, 3), np.float32),
-                image=specs.Array(self.size + (3,), np.uint8)
-            )
+            #     image=specs.Array(self.size + (3,), np.uint8)
+            # )
+            pass
         return obs_spec
 
     def _update_obs(self, obs):
@@ -91,11 +93,11 @@ class DMC(dm_env.Environment):
             physics = self._env.physics
             # depth_map = physics.render(*self.size, camera_id=self.camera, depth=True)
             # depth_map = depth_map[..., None]
-            obs.update(
+            # obs.update(
                 # point_cloud=self._pcg(physics).astype(np.float32),
-                image=physics.render(*self.size, camera_id=self.camera),
+                # image=physics.render(*self.size, camera_id=self.camera),
                 # depth_map=depth_map
-            )
+            # )
         return obs
 
 
@@ -158,4 +160,3 @@ class UR5(dm_env.Environment):
         del obs['point_cloud']
         obs['pcd_with_image'] = new_pcd
         return obs
-

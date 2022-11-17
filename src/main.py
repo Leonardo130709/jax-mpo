@@ -10,9 +10,10 @@ from src.builder import Builder
 from src.config import MPOConfig
 
 
-def run_actor(builder, server_address, env, env_specs):
+def run_actor(builder, server_address):
     prepare_logdir(builder.cfg)
     client = reverb.Client(server_address)
+    env, env_specs = builder.make_env()
     actor = builder.make_actor(env, env_specs, client)
     actor.run()
 
@@ -37,29 +38,33 @@ def prepare_logdir(cfg: MPOConfig):
     cfg.save(path + "/config.yaml")
 
 
-def main():
-    config = MPOConfig()
+def main(config):
     builder = Builder(config)
     env, env_specs = builder.make_env()
     server_address = f"localhost:{config.reverb_port}"
     server = mp.Process(target=run_server,
                         args=(builder, env_specs)
                         )
-    actor = mp.Process(target=run_actor,
-                       args=(builder, server_address, env, env_specs)
-                       )
     learner = mp.Process(target=run_learner,
                          args=(builder, server_address, env_specs)
                          )
     server.start()
-    actor.start()
     learner.start()
+    actors = []
+    for _ in range(config.num_actors):
+        actor = mp.Process(target=run_actor,
+                           args=(builder, server_address)
+                           )
+        actor.start()
+        actors.append(actor)
 
-    actor.join()
+    for actor in actors:
+        actor.join()
     learner.join()
     server.join()
 
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
-    main()
+    config = MPOConfig.from_entrypoint()
+    main(config)

@@ -1,5 +1,7 @@
 import re
 import time
+import pickle
+import multiprocessing as mp
 from functools import partial
 
 import dm_env
@@ -22,7 +24,8 @@ class Actor:
                  env: dm_env.Environment,
                  cfg: MPOConfig,
                  networks: MPONetworks,
-                 client: reverb.Client
+                 client: reverb.Client,
+                 total_steps: mp.Value
                  ):
 
         @partial(jax.jit, backend=cfg.actor_backend)
@@ -49,7 +52,9 @@ class Actor:
         self._act = _act
         self.cfg = cfg
         self._client = client
+        self._total_steps = total_steps
         self._device = jax.devices(cfg.actor_backend)[0]
+
         rng_key = jax.device_put(rng_key, self._device)
         self._rng_seq = hk.PRNGSequence(rng_key)
         self._weights_ds = reverb.TimestepDataset.from_table_signature(
@@ -110,34 +115,41 @@ class Actor:
                 self.cfg.max_seq_len,
             )
             tr_length = len(trajectory["actions"])
+
             step += self.cfg.action_repeat * tr_length
+            with self._total_steps.get_lock():
+                self._total_steps.value += self.cfg.action_repeat * tr_length
             self._adder(trajectory)
 
             if should_eval(step):
-                returns = []
-                dur = []
-                for _ in range(self.cfg.eval_times):
-                    tr, timestep = env_loop.environment_loop(
-                        self._env,
-                        eval_policy,
-                        self._env.reset()
-                    )
-                    returns.append(sum(tr["rewards"]))
-                    dur.append(len(tr["actions"]))
-
-                metrics = {
-                    "step": step,
-                    "time_expired": time.time() - start,
-                    "train_return": sum(trajectory["rewards"]),
-                    "eval_return_mean": np.mean(returns),
-                    "eval_return_std": np.std(returns),
-                    "eval_duration_mean": np.mean(dur),
-                }
-                reverb_info = _get_reverb_metrics(self._client)
-                metrics.update(reverb_info)
-                # Should eval steps also add to total_steps?
-                json_log.write(metrics)
-                tf_log.write(metrics)
+                lock = self._total_steps.get_lock()
+                if lock.acquire(False):
+                    returns = []
+                    dur = []
+                    for _ in range(self.cfg.eval_times):
+                        tr, timestep = env_loop.environment_loop(
+                            self._env,
+                            eval_policy,
+                            self._env.reset()
+                        )
+                        returns.append(sum(tr["rewards"]))
+                        dur.append(len(tr["actions"]))
+    
+                    metrics = {
+                        "step": self._total_steps.value,
+                        "time_expired": time.time() - start,
+                        "train_return": sum(trajectory["rewards"]),
+                        "eval_return_mean": np.mean(returns),
+                        "eval_return_std": np.std(returns),
+                        "eval_duration_mean": np.mean(dur),
+                    }
+                    reverb_info = _get_reverb_metrics(self._client)
+                    metrics.update(reverb_info)
+                    json_log.write(metrics)
+                    tf_log.write(metrics)
+                    with open(self.cfg.logdir + "/total_steps", "wb") as f:
+                        pickle.dump(self._total_steps.value, f)
+                    lock.release()
 
 
 class Every:
