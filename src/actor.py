@@ -13,12 +13,14 @@ import haiku as hk
 import reverb
 
 from rltools.loggers import JSONLogger, TFSummaryLogger
+
 from src.networks import MPONetworks
 from src.config import MPOConfig
 from src.utils import env_loop
 
 
 class Actor:
+
     def __init__(self,
                  rng_key: jax.random.PRNGKey,
                  env: dm_env.Environment,
@@ -40,12 +42,22 @@ class Actor:
             state = networks.encoder(params, observation)
             policy_params = networks.actor(params, state)
             dist = networks.make_policy(*policy_params)
-            action = jax.lax.select(
-                training,
-                dist.sample(seed=key),
-                dist.distribution.mean()
-            )
-            return jnp.clip(action, a_min=-1, a_max=1)
+            if cfg.discretize:
+                logits = dist.distribution.logits
+                action = jax.lax.select(
+                    training,
+                    dist.sample(seed=key),
+                    jax.nn.one_hot(logits.argmax(-1), logits.shape[-1],
+                                   dtype=jnp.int32)
+                )
+            else:
+                action = jax.lax.select(
+                    training,
+                    dist.sample(seed=key),
+                    dist.distribution.mean()
+                )
+                action = jnp.clip(action, a_min=-1, a_max=1)
+            return action
 
         self._env = env
         self._act_prec = env.action_spec().dtype
@@ -115,10 +127,10 @@ class Actor:
                 self.cfg.max_seq_len,
             )
             tr_length = len(trajectory["actions"])
-
-            step += self.cfg.action_repeat * tr_length
+            env_steps = self.cfg.action_repeat * tr_length
+            step += env_steps
             with self._total_steps.get_lock():
-                self._total_steps.value += self.cfg.action_repeat * tr_length
+                self._total_steps.value += env_steps
             self._adder(trajectory)
 
             if should_eval(step):

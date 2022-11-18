@@ -84,7 +84,11 @@ class Actor(hk.Module):
                  name: str = "actor"
                  ):
         super().__init__(name=name)
-        self.act_dim = action_spec.shape[0]
+        self._discrete = len(action_spec.shape) == 2
+        if self._discrete:
+            self.act_dim = action_spec.shape  # [ndim, bins]
+        else:
+            self.act_dim = action_spec.shape[0]
         self.layers = tuple(layers)
         self.act = act
         self.norm = norm
@@ -95,15 +99,23 @@ class Actor(hk.Module):
     def __call__(self, state):
         """Actor returns params instead of a distribution itself
         since tfd.Distribution doesn't play nicely with jax.vmap."""
+        if self._discrete:
+            output_size = self.act_dim[0] * self.act_dim[1]
+        else:
+            output_size = 2 * self.act_dim
         emb = TanhEmbedding(self.layers[0])
         mlp = MLP(self.layers[1:], self.act, self.norm, activate_final=True)
-        out = hk.Linear(2 * self.act_dim,
+        out = hk.Linear(output_size,
                         w_init=hk.initializers.RandomNormal(stddev=1e-4),
                         b_init=jnp.zeros
                         )
         x = emb(state)
         x = mlp(x)
         x = out(x)
+
+        if self._discrete:
+            return x.reshape(self.act_dim),
+
         mean, std = jnp.split(x, 2, -1)
         mean = jnp.tanh(mean)
         std = (1 - self.min_std) * jax.nn.sigmoid(std + self._init_std)
@@ -371,13 +383,20 @@ def make_networks(cfg: MPOConfig,
             key = hk.next_rng_key()
             action = dist.sample(seed=key)
             tau = jnp.ones(1)
+            if cfg.discretize:
+                action = action.flatten()
             value = critic(state, action, tau)
             return state, action, value
 
         return init, (actor, encoder, critic)
 
-    def make_policy(mean, std) -> tfd.Distribution:
-        dist = tfd.Normal(mean, std)
+    def make_policy(*params) -> tfd.Distribution:
+        if cfg.discretize:
+            logits = params[0]
+            dist = tfd.OneHotCategorical(logits)
+        else:
+            mean, std = params
+            dist = tfd.Normal(mean, std)
         return tfd.Independent(dist, 1)
 
     def split_params(params: hk.Params) -> Tuple[hk.Params]:

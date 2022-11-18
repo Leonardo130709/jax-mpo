@@ -63,11 +63,16 @@ class MPOLearner:
                 print(f"Loading {hk.data_structures.tree_size(_params)} "
                       "weights.")
                 _params = jax.device_put(_params)
+        client.insert(_params, {"weights": 1})
 
         # TODO: remote env specs are problematic to create, so here duct tape.
         del env_spec
         # act_dim = env_spec.action_spec.shape[0]
-        act_dim = _params["actor/linear"]["b"].size // 2
+        last_bias = _params["actor/linear"]["b"]
+        if cfg.discretize:
+            act_dim = last_bias.size // cfg.nbins
+        else:
+            act_dim = last_bias.size // 2
         _dual_params = Duals(
             log_temperature=jnp.array(cfg.init_log_temperature),
             log_alpha_mean=jnp.full(act_dim, cfg.init_log_alpha_mean),
@@ -139,7 +144,14 @@ class MPOLearner:
             target_policy_params = networks.actor(target_params, target_s_t)
             target_dist = networks.make_policy(*target_policy_params)
             a_t = target_dist.sample(seed=k3, sample_shape=cfg.num_actions)
-            a_t = jnp.clip(a_t, a_min=-1., a_max=1.)
+            a_t = a_t.astype(a_tm1.dtype)
+
+            if cfg.discretize:
+                original_shape = a_t.shape
+                a_t = a_t.reshape(cfg.num_actions, -1)
+                a_tm1 = a_tm1.flatten()
+            else:
+                a_t = jnp.clip(a_t, a_min=-1., a_max=1.)
 
             def repeat(ar):
                 return jnp.repeat(ar[jnp.newaxis], cfg.num_actions, axis=0)
@@ -183,18 +195,14 @@ class MPOLearner:
                     cfg.tv_constraint
                 )
 
-            mean, std = networks.actor(params, s_t)
-            target_mean, target_std = target_policy_params
-            fixed_mean = networks.make_policy(target_mean, std)
-            fixed_std = networks.make_policy(mean, target_std)
-
             def policy_loss(online_dist,
+                            actions,
                             duals,
                             epsilon,
                             prefix
                             ):
                 ce_loss = ops.cross_entropy_loss(
-                    online_dist, a_t, normalized_weights)
+                    online_dist, actions, normalized_weights)
                 kl = tfd.kl_divergence(
                     target_dist.distribution,
                     online_dist.distribution
@@ -212,31 +220,50 @@ class MPOLearner:
                 }
                 return loss, met
 
-            mean_loss, metrics_mean = policy_loss(
-                fixed_std, alpha_mean, cfg.epsilon_mean, prefix="mean")
-            std_loss, metrics_std = policy_loss(
-                fixed_mean, alpha_std, cfg.epsilon_std, prefix="std")
-            total_loss =\
-                critic_loss + .5 * (mean_loss + std_loss) + temperature_loss
-
             metrics = dict(
                 critic_loss=critic_loss,
                 mean_value=jnp.mean(v_t),
                 value_std=jnp.std(v_t),
                 q_value_std=jnp.std(q_t),
                 advantage_gap=q_t.max() - q_t.min(),
-                entropy=fixed_std.entropy(),
-                pi_stddev=jnp.mean(std),
                 temperature=temperature,
                 alpha_mean=jnp.mean(alpha_mean),
                 alpha_std=jnp.mean(alpha_std),
                 temperature_loss=temperature_loss,
-                total_loss=total_loss,
                 mean_reward=r_t / self._cfg.n_step / self._cfg.action_repeat,
                 mean_discount=discount_t
             )
-            metrics.update(metrics_mean)
-            metrics.update(metrics_std)
+
+            if cfg.discretize:
+                logits = networks.actor(params, s_t)
+                online = networks.make_policy(*logits)
+                a_t = a_t.reshape(original_shape)
+                actor_loss, metrics_logits = policy_loss(
+                    online, a_t, alpha_mean, cfg.epsilon_eta, prefix="mean"
+                )
+                total_loss =\
+                    critic_loss + actor_loss + temperature_loss
+                metrics.update(metrics_logits)
+                metrics.update(entropy=online.entropy())
+            else:
+                mean, std = networks.actor(params, s_t)
+                target_mean, target_std = target_policy_params
+                fixed_mean = networks.make_policy(target_mean, std)
+                fixed_std = networks.make_policy(mean, target_std)
+
+                mean_loss, metrics_mean = policy_loss(
+                    fixed_std, a_t, alpha_mean, cfg.epsilon_mean, prefix="mean")
+                std_loss, metrics_std = policy_loss(
+                    fixed_mean, a_t, alpha_std, cfg.epsilon_std, prefix="std")
+                total_loss =\
+                    critic_loss + .5 * (mean_loss + std_loss) + temperature_loss
+                metrics.update(metrics_mean)
+                metrics.update(metrics_std)
+                metrics.update(entropy=fixed_mean.entropy(),
+                               pi_stddev=jnp.mean(std)
+                               )
+
+            metrics.update(total_loss=total_loss)
 
             return loss_scale.scale(total_loss), metrics
 
@@ -307,6 +334,7 @@ class MPOLearner:
             chex.assert_tree_shape_prefix(actions, (cfg.batch_size,))
             observations = networks.preprocess(observations)
             next_observations = networks.preprocess(next_observations)
+            actions = actions.astype(jnp.float32)
             actions = prec.cast_to_compute(actions)
             rewards, discounts = prec.cast_to_output((rewards, discounts))
 

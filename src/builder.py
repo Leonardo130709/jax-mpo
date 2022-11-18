@@ -1,5 +1,6 @@
-import multiprocessing as mp
+import os
 import pickle
+import multiprocessing as mp
 
 import dm_env
 import jax
@@ -24,10 +25,12 @@ class Builder:
         rng = jax.random.PRNGKey(config.seed)
         self._actor_rng, self._learner_rng, self._env_rng = \
             jax.random.split(rng, 3)
-        try:
-            with open(self.cfg.logdir + "/total_steps", "rb") as f:
+
+        prev_steps = self.cfg.logdir + "/total_steps"
+        if os.path.exists(prev_steps):
+            with open(prev_steps, "rb") as f:
                 val = pickle.load(f)
-        except FileNotFoundError:
+        else:
             val = 0
         self._total_steps = mp.Value("i", val)
 
@@ -74,13 +77,10 @@ class Builder:
             )
         ]
         checkpointer = reverb.checkpointers.DefaultCheckpointer(
-            self.cfg.logdir + "/reverb/")
+            self.cfg.logdir + "/reverb")
         server = reverb.Server(tables,
                                self.cfg.reverb_port,
                                checkpointer)
-        client = reverb.Client(f"localhost:{self.cfg.reverb_port}")
-        client.insert(params, priorities={"weights": 1})
-
         return server
 
     def make_dataset_iterator(self, server_address: str):
@@ -100,13 +100,13 @@ class Builder:
                              env_specs.action_spec)
 
     def make_learner(self,
-                     env_spec: EnvironmentSpecs,
+                     env_specs: EnvironmentSpecs,
                      iterator: tf.data.Dataset,
                      client: reverb.Client
                      ):
         self._learner_rng, rng_key = jax.random.split(self._learner_rng)
-        networks = self.make_networks(env_spec)
-        return MPOLearner(rng_key, self.cfg, env_spec,
+        networks = self.make_networks(env_specs)
+        return MPOLearner(rng_key, self.cfg, env_specs,
                           networks, iterator, client)
 
     def make_actor(self,
@@ -133,5 +133,8 @@ class Builder:
             raise NotImplementedError
 
         env = dmc_wrappers.ActionRepeat(env, self.cfg.action_repeat)
-        env = dmc_wrappers.ActionRescale(env)
+        if self.cfg.discretize:
+            env = dmc_wrappers.DiscreteActionWrapper(env, self.cfg.nbins)
+        else:
+            env = dmc_wrappers.ActionRescale(env)
         return env, env.environment_specs

@@ -130,7 +130,7 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 1e-4
+    learning_rate: float = 3e-4
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
@@ -145,16 +145,29 @@ class MPOConfig(Config):
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
-    num_actors: int = 3
+    num_actors: int = 1
 
     # task
     seed: int = 0
     task: str = "dmc_walker_walk"
-    logdir: str = "logdir/mp_test"
+    logdir: str = "logdir/cont_walker_walk"
     total_steps: int = 1e6
     time_limit: int = 1e3
+    discretize: bool = False
+    nbins: int = 9
 
 
 @dataclasses.dataclass
 class FromImageConfig(MPOConfig):
-    """Config to learn from high dim observations."""
+
+    action_repeat = 2.
+    n_step = 3
+
+    keys = "image"
+    actor_backend = "gpu"
+    actor_layers = (512, 512, 512)
+    critic_layers = (512, 512, 512)
+
+    samples_per_insert = 256
+    learner_dump_every = 1e4
+
