@@ -124,7 +124,10 @@ def ordinal_logits(logits: Array):
     chex.assert_type(logits, float)
     chex.assert_rank(logits, 1)
 
+    reg = 1e-6
     logits = jax.nn.sigmoid(logits)
+    logits = jnp.clip(logits, a_min=reg, a_max=1. - reg)
+
     lt = jnp.log(logits)
     gt = jnp.log(1 - jnp.flip(logits))
     lt = jnp.cumsum(lt)
