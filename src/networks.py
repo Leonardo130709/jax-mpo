@@ -10,6 +10,7 @@ import tensorflow_probability.substrates.jax as tfp
 from dm_env import specs
 
 from src.config import MPOConfig
+from src.utils import ops
 
 tfd = tfp.distributions
 Layers = Iterable[int]
@@ -81,6 +82,7 @@ class Actor(hk.Module):
                  norm: str = "none",
                  min_std: float = 0.1,
                  init_std: float = 0.5,
+                 use_ordinal: bool = False,
                  name: str = "actor"
                  ):
         super().__init__(name=name)
@@ -93,6 +95,7 @@ class Actor(hk.Module):
         self.act = act
         self.norm = norm
         self.min_std = min_std
+        self.use_ordinal = use_ordinal
         init_std = (1. - min_std) / (init_std - min_std)
         self._init_std = - jnp.log(init_std - 1)
 
@@ -114,7 +117,10 @@ class Actor(hk.Module):
         x = out(x)
 
         if self._discrete:
-            return x.reshape(self.act_dim),
+            logits = x.reshape(self.act_dim)
+            if self.use_ordinal:
+                logits = jax.vmap(ops.ordinal_logits)(logits)
+            return logits,
 
         mean, std = jnp.split(x, 2, -1)
         mean = jnp.tanh(mean)
@@ -354,6 +360,7 @@ def make_networks(cfg: MPOConfig,
             cfg.normalization,
             cfg.min_std,
             cfg.init_std,
+            cfg.use_ordinal
         )
         encoder = Encoder(
             cfg.keys,

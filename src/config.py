@@ -155,6 +155,7 @@ class MPOConfig(Config):
     time_limit: int = 1e3
     discretize: bool = False
     nbins: int = 9
+    use_ordinal: bool = False
 
 
 @dataclasses.dataclass

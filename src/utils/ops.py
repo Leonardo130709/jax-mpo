@@ -117,3 +117,17 @@ def temperature_loss_and_normalized_weights(
 def softplus(param):
     param = jnp.maximum(param, -18.)
     return jax.nn.softplus(param) + 1e-8
+
+
+def ordinal_logits(logits: Array):
+    """1901.10500"""
+    chex.assert_type(logits, float)
+    chex.assert_rank(logits, 1)
+
+    logits = jax.nn.sigmoid(logits)
+    lt = jnp.log(logits)
+    gt = jnp.log(1 - jnp.flip(logits))
+    lt = jnp.cumsum(lt)
+    gt = jnp.cumsum(gt[:-1])
+    gt = jnp.concatenate([jnp.zeros_like(gt[:1]), gt])
+    return lt + jnp.flip(gt)
