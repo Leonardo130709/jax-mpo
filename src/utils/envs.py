@@ -6,8 +6,6 @@ import jax
 import numpy as np
 import gym
 
-from src import GOAL_KEY
-
 
 class DMC(dm_env.Environment):
     def __init__(self,

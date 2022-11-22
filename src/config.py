@@ -7,7 +7,7 @@ Layers = tuple[int, ...]
 @dataclasses.dataclass
 class MPOConfig(Config):
     """
-    Args:
+    Args: #noqa
         discount: MDP discount factor.
         action_repeat: repeat an action for multiple timesteps.
         n_step: multistep update w/o off-policy corrections.
@@ -92,22 +92,23 @@ class MPOConfig(Config):
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
     #  HER.
-    hindsight_goal_key: str = r"$^"
-    augmentation_strategy: str = "none"
+    goal_sources: tuple[str, ...] = ("kinect", "box/position")
+    goal_targets: tuple[str, ...] = ("goal_image", "goal_pos")
+    augmentation_strategy: str = "final"
     num_augmentations: int = 1
 
     # Architecture
     activation: str = "elu"
     normalization: str = "layer"
     #   Encoder
-    keys: str = r".*"
+    keys: str = r"(ur5e|goal_pos|box).*"
     mlp_layers: Layers = ()
     pn_number: int = 1000
     img_size: tuple[int, int] = (84, 84)
     pn_layers: Layers = (64, 128, 256)
-    cnn_depths: Layers = (32, 32, 32, 32)
-    cnn_kernels: Layers = (4, 4, 4, 4)
-    cnn_strides: Layers = (2, 2, 2, 2)
+    cnn_depths: Layers = (32, 64, 64)
+    cnn_kernels: Layers = (8, 4, 3)
+    cnn_strides: Layers = (4, 2, 1)
     feature_fusion: str = r"$^"
     #   Actor
     actor_backend: str = "cpu"
@@ -121,7 +122,7 @@ class MPOConfig(Config):
     quantile_embedding_dim: int = 64
 
     # reverb
-    min_replay_size: int = 1e3
+    min_replay_size: int = 5e3
     samples_per_insert: int = 32
     batch_size: int = 256
     buffer_capacity: int = 1e6
@@ -130,45 +131,29 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 3e-4
+    learning_rate: float = 1e-4
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
-    adam_eps: float = 1e-5
+    adam_eps: float = 1e-6
     weight_decay: float = 1e-6
-    target_actor_update_period: int = 25
+    target_actor_update_period: int = 100
     target_critic_update_period: int = 100
-    max_seq_len: int = 25
+    max_seq_len: int = 40
     eval_every: int = 1e4
     log_every: int = 1e2
     eval_times: int = 15
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
-    num_actors: int = 1
+    num_actors: int = 5
 
     # task
     seed: int = 0
-    task: str = "dmc_walker_walk"
-    logdir: str = "logdir/cont_walker_walk"
-    total_steps: int = 1e6
-    time_limit: int = 1e3
-    discretize: bool = False
-    nbins: int = 9
+    task: str = "src_lift"
+    logdir: str = "logdir/src_lift_features_no_dr"
+    total_steps: int = 1e9
+    time_limit: int = 200
+    discretize: bool = True
+    nbins: int = 11
     use_ordinal: bool = False
-
-
-@dataclasses.dataclass
-class FromImageConfig(MPOConfig):
-
-    action_repeat = 2.
-    n_step = 3
-
-    keys = "image"
-    actor_backend = "gpu"
-    actor_layers = (512, 512, 512)
-    critic_layers = (512, 512, 512)
-
-    samples_per_insert = 256
-    learner_dump_every = 1e4
-

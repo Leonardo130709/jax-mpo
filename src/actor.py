@@ -47,7 +47,8 @@ class Actor:
                 action = jax.lax.select(
                     training,
                     dist.sample(seed=key),
-                    jax.nn.one_hot(logits.argmax(-1), logits.shape[-1],
+                    jax.nn.one_hot(logits.argmax(-1),
+                                   logits.shape[-1],
                                    dtype=jnp.int32)
                 )
             else:
@@ -76,20 +77,13 @@ class Actor:
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
 
-        if cfg.augmentation_strategy != "none":
-            goal_key = _match_key(
-                cfg.hindsight_goal_key,
-                env.observation_spec().keys()
-            )
-        else:
-            goal_key = r"$^"
-
         np_rng = np.asarray(next(self._rng_seq))
         self._adder = env_loop.Adder(client,
                                      np.random.default_rng(np_rng),
                                      cfg.n_step,
                                      cfg.discount,
-                                     goal_key,
+                                     cfg.goal_sources,
+                                     cfg.goal_targets,
                                      cfg.augmentation_strategy,
                                      cfg.num_augmentations
                                      )
@@ -193,10 +187,3 @@ def _get_reverb_metrics(client: reverb.Client) -> dict[str, float]:
         if hasattr(info, key):
             reverb_info[f"reverb_{key}"] = getattr(info, key)
     return reverb_info
-
-
-def _match_key(pattern, candidates):
-    candidates = [k for k in candidates if re.match(pattern, k)]
-    assert len(candidates) == 1, \
-        f"Invalid or ambiguous key: {pattern!r} -- {candidates}."
-    return candidates.pop()

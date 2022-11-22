@@ -129,6 +129,8 @@ class Builder:
             assert self.cfg.action_repeat == 1
             address = ("10.201.2.136", 5553)
             env = envs.UR5(address, self.cfg.img_size, self.cfg.pn_number)
+        elif domain == "src":
+            env = _make_env()
         else:
             raise NotImplementedError
 
@@ -138,3 +140,23 @@ class Builder:
         else:
             env = dmc_wrappers.ActionRescale(env)
         return env, env.environment_specs
+
+
+def _make_env():
+    import sys
+    import importlib
+    from dm_control import composer
+
+    path = ""
+
+    spec = importlib.util.spec_from_file_location("src", path)
+    module = importlib.util.module_from_spec(spec)
+    mem = sys.modules.get("src")
+    sys.modules["src"] = module
+    spec.loader.exec_module(module)
+    from src.tasks.lift import Lift as Reach
+    t = Reach()
+    if mem is not None:
+        sys.modules["src"] = mem
+    return composer.Environment(t, time_limit=50,
+                                strip_singleton_obs_buffer_dim=True)
