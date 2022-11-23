@@ -88,7 +88,6 @@ class Builder:
             server_address=server_address,
             table="replay_buffer",
             max_in_flight_samples_per_worker=2 * self.cfg.batch_size,
-            get_signature_timeout_secs=100
         )
         ds = ds.batch(self.cfg.batch_size, drop_remainder=True)
         ds = ds.prefetch(5)

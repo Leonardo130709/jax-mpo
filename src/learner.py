@@ -239,7 +239,7 @@ class MPOLearner:
                 online = networks.make_policy(*logits)
                 a_t = a_t.reshape(original_shape)
                 actor_loss, metrics_logits = policy_loss(
-                    online, a_t, alpha_mean, cfg.epsilon_eta, prefix="mean"
+                    online, a_t, alpha_mean, cfg.epsilon_mean, prefix="mean"
                 )
                 total_loss =\
                     critic_loss + actor_loss + temperature_loss
