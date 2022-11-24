@@ -102,8 +102,8 @@ class Actor:
     def run(self):
         step = 0
         start = time.time()
-        should_update = Every(self.cfg.actor_update_every)
-        should_eval = Every(self.cfg.eval_every)
+        should_update = env_loop.Every(self.cfg.actor_update_every)
+        should_eval = env_loop.Every(self.cfg.eval_every)
         timestep = self._env.reset()
         eval_policy = partial(self.act, training=False)
         train_policy = partial(self.act, training=True)
@@ -153,23 +153,10 @@ class Actor:
                     metrics.update(reverb_info)
                     json_log.write(metrics)
                     tf_log.write(metrics)
-                    with open(self.cfg.logdir + "/total_steps", "wb") as f:
+                    path = self.cfg.logdir + "/total_steps.pickle"
+                    with open(path, "wb") as f:
                         pickle.dump(self._total_steps.value, f)
                     lock.release()
-
-
-class Every:
-    def __init__(self, interval: int):
-        self.interval = interval
-        self._prev_step = 0
-
-    def __call__(self, step: int) -> bool:
-        assert step >= self._prev_step
-        diff = step - self._prev_step
-        if diff >= self.interval:
-            self._prev_step = step
-            return True
-        return False
 
 
 def _get_reverb_metrics(client: reverb.Client) -> dict[str, float]:

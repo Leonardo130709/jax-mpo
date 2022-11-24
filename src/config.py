@@ -86,7 +86,7 @@ class MPOConfig(Config):
     #  MPO.
     tv_constraint: float = 1.
     epsilon_eta: float = .1
-    epsilon_mean: float = 1e-2
+    epsilon_mean: float = 2.5e-3
     epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
@@ -112,11 +112,11 @@ class MPOConfig(Config):
     feature_fusion: str = r"$^"
     #   Actor
     actor_backend: str = "cpu"
-    actor_layers: Layers = (128, 128, 128)
+    actor_layers: Layers = (256, 256, 256)
     min_std: float = .1
     init_std: float = .5
     #   Critic
-    use_iqn: bool = True
+    use_iqn: bool = False
     num_critic_heads: int = 2
     critic_layers: Layers = (512, 512, 256)
     quantile_embedding_dim: int = 64
@@ -127,7 +127,7 @@ class MPOConfig(Config):
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
-    learner_dump_every: int = 40_000
+    learner_dump_every: int = 10
     reverb_port: int = 4445
 
     # training
@@ -142,6 +142,7 @@ class MPOConfig(Config):
     max_seq_len: int = 50
     eval_every: int = 1e4
     log_every: int = 1e2
+    save_every: int = 40_000
     eval_times: int = 15
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
@@ -155,5 +156,5 @@ class MPOConfig(Config):
     total_steps: int = 1e9
     time_limit: int = 200
     discretize: bool = True
-    nbins: int = 11
+    nbins: int = 9
     use_ordinal: bool = False

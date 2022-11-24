@@ -20,6 +20,20 @@ class Trajectory(TypedDict, total=False):
     next_observations: List[Observation]
 
 
+class Every:
+    def __init__(self, interval: int):
+        self.interval = interval
+        self._prev_step = 0
+
+    def __call__(self, step: int) -> bool:
+        assert step >= self._prev_step
+        diff = step - self._prev_step
+        if diff >= self.interval:
+            self._prev_step = step
+            return True
+        return False
+
+
 def environment_loop(env: dm_env.Environment,
                      policy: Callable[[Observation], Action],
                      prev_timestep: dm_env.TimeStep,

@@ -11,7 +11,6 @@ from src.config import MPOConfig
 
 
 def run_actor(builder, server_address):
-    prepare_logdir(builder.cfg)
     client = reverb.Client(server_address)
     env, env_specs = builder.make_env()
     actor = builder.make_actor(env, env_specs, client)
@@ -19,7 +18,6 @@ def run_actor(builder, server_address):
 
 
 def run_learner(builder, server_address, env_specs):
-    prepare_logdir(builder.cfg)
     ds = builder.make_dataset_iterator(server_address)
     client = reverb.Client(server_address)
     learner = builder.make_learner(env_specs, ds, client)
@@ -29,13 +27,6 @@ def run_learner(builder, server_address, env_specs):
 def run_server(builder, env_specs):
     server = builder.make_server(env_specs)
     server.wait()
-
-
-def prepare_logdir(cfg: MPOConfig):
-    path = os.path.expanduser(cfg.logdir)
-    if not os.path.exists(path):
-        os.makedirs(path)
-    cfg.save(path + "/config.yaml")
 
 
 def main(config):

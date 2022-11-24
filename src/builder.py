@@ -19,16 +19,25 @@ from src.utils import envs
 
 
 class Builder:
+
     def __init__(self, config: MPOConfig):
+        path = os.path.expanduser(config.logdir)
+        if not os.path.exists(path):
+            os.makedirs(path)
+        path = config.logdir + "/config.yaml"
+        if os.path.exists(path):
+            config = MPOConfig.load(path)
+        else:
+            config.save(path)
         self.cfg = config
-        # TODO: change rng to numpy since jax.PRNG may use GPU w/o purpose.
+        # TODO: change rng to numpy since jax.PRNG may use GPU w/o a purpose.
         rng = jax.random.PRNGKey(config.seed)
-        self._actor_rng, self._learner_rng, self._env_rng = \
+        self._actor_rng, self._learner_rng, self._env_rng =\
             jax.random.split(rng, 3)
 
-        prev_steps = self.cfg.logdir + "/total_steps"
-        if os.path.exists(prev_steps):
-            with open(prev_steps, "rb") as f:
+        path = self.cfg.logdir + "/total_steps.pickle"
+        if os.path.exists(path):
+            with open(path, "rb") as f:
                 val = pickle.load(f)
         else:
             val = 0
