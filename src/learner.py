@@ -49,6 +49,7 @@ class MPOLearner:
             client: reverb.Client
     ):
         jax.config.update("jax_disable_jit", not cfg.jit)
+        rng_key = jax.device_put(rng_key)
         key, subkey = jax.random.split(rng_key)
         self._cfg = cfg
         self._data_iterator = train_dataset

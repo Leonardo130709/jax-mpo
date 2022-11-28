@@ -86,7 +86,7 @@ class MPOConfig(Config):
     #  MPO.
     tv_constraint: float = 1.
     epsilon_eta: float = .1
-    epsilon_mean: float = 2.5e-3
+    epsilon_mean: float = 1e-3
     epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
@@ -152,7 +152,7 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "src_lift"
-    logdir: str = "logdir/src_lift_features_no_dr"
+    logdir: str = "logdir/src_lift_features"
     total_steps: int = 1e9
     time_limit: int = 200
     discretize: bool = True
