@@ -47,7 +47,8 @@ class Actor:
                 action = jax.lax.select(
                     training,
                     dist.sample(seed=key),
-                    jax.nn.one_hot(logits.argmax(-1), logits.shape[-1],
+                    jax.nn.one_hot(logits.argmax(-1),
+                                   logits.shape[-1],
                                    dtype=jnp.int32)
                 )
             else:
@@ -76,20 +77,13 @@ class Actor:
             num_workers_per_iterator=1,
         ).as_numpy_iterator()
 
-        if cfg.augmentation_strategy != "none":
-            goal_key = _match_key(
-                cfg.hindsight_goal_key,
-                env.observation_spec().keys()
-            )
-        else:
-            goal_key = r"$^"
-
         np_rng = np.asarray(next(self._rng_seq))
         self._adder = env_loop.Adder(client,
                                      np.random.default_rng(np_rng),
                                      cfg.n_step,
                                      cfg.discount,
-                                     goal_key,
+                                     cfg.goal_sources,
+                                     cfg.goal_targets,
                                      cfg.augmentation_strategy,
                                      cfg.num_augmentations
                                      )
@@ -108,8 +102,8 @@ class Actor:
     def run(self):
         step = 0
         start = time.time()
-        should_update = Every(self.cfg.actor_update_every)
-        should_eval = Every(self.cfg.eval_every)
+        should_update = env_loop.Every(self.cfg.actor_update_every)
+        should_eval = env_loop.Every(self.cfg.eval_every)
         timestep = self._env.reset()
         eval_policy = partial(self.act, training=False)
         train_policy = partial(self.act, training=True)
@@ -159,23 +153,10 @@ class Actor:
                     metrics.update(reverb_info)
                     json_log.write(metrics)
                     tf_log.write(metrics)
-                    with open(self.cfg.logdir + "/total_steps", "wb") as f:
+                    path = self.cfg.logdir + "/total_steps.pickle"
+                    with open(path, "wb") as f:
                         pickle.dump(self._total_steps.value, f)
                     lock.release()
-
-
-class Every:
-    def __init__(self, interval: int):
-        self.interval = interval
-        self._prev_step = 0
-
-    def __call__(self, step: int) -> bool:
-        assert step >= self._prev_step
-        diff = step - self._prev_step
-        if diff >= self.interval:
-            self._prev_step = step
-            return True
-        return False
 
 
 def _get_reverb_metrics(client: reverb.Client) -> dict[str, float]:
@@ -193,10 +174,3 @@ def _get_reverb_metrics(client: reverb.Client) -> dict[str, float]:
         if hasattr(info, key):
             reverb_info[f"reverb_{key}"] = getattr(info, key)
     return reverb_info
-
-
-def _match_key(pattern, candidates):
-    candidates = [k for k in candidates if re.match(pattern, k)]
-    assert len(candidates) == 1, \
-        f"Invalid or ambiguous key: {pattern!r} -- {candidates}."
-    return candidates.pop()

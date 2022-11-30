@@ -1,1 +1,0 @@
-GOAL_KEY = "goal"

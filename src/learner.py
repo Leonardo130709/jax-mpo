@@ -15,7 +15,7 @@ import tensorflow_probability.substrates.jax as tfp
 from rltools.loggers import TFSummaryLogger
 from src.networks import MPONetworks
 from src.config import MPOConfig
-from src.utils import ops
+from src.utils import ops, env_loop
 
 tfd = tfp.distributions
 Array = jnp.ndarray
@@ -49,36 +49,13 @@ class MPOLearner:
             client: reverb.Client
     ):
         jax.config.update("jax_disable_jit", not cfg.jit)
+        rng_key = jax.device_put(rng_key)
         key, subkey = jax.random.split(rng_key)
         self._cfg = cfg
         self._data_iterator = train_dataset
         self._client = client
-        prec = jmp.get_policy(cfg.mp_policy)
-
-        _params = networks.init(subkey)
-        weights_path = cfg.logdir + "/weights.pkl"
-        if os.path.exists(weights_path):
-            with open(weights_path, "rb") as weights:
-                _params = pickle.load(weights)
-                print(f"Loading {hk.data_structures.tree_size(_params)} "
-                      "weights.")
-                _params = jax.device_put(_params)
-        client.insert(_params, {"weights": 1})
-
-        # TODO: remote env specs are problematic to create, so here duct tape.
         del env_spec
-        # act_dim = env_spec.action_spec.shape[0]
-        last_bias = _params["actor/linear"]["b"]
-        if cfg.discretize:
-            act_dim = last_bias.size // cfg.nbins
-        else:
-            act_dim = last_bias.size // 2
-        _dual_params = Duals(
-            log_temperature=jnp.array(cfg.init_log_temperature),
-            log_alpha_mean=jnp.full(act_dim, cfg.init_log_alpha_mean),
-            log_alpha_std=jnp.full(act_dim, cfg.init_log_alpha_std)
-        )
-        _dual_params = prec.cast_to_output(_dual_params)
+        prec = jmp.get_policy(cfg.mp_policy)
 
         adamw = optax.adamw(cfg.learning_rate,
                             cfg.adam_b1,
@@ -90,31 +67,56 @@ class MPOLearner:
             adamw
         )
         dual_optim = optax.adam(cfg.dual_lr)
-        _optim_state = optim.init(_params)
-        _dual_optim_state = dual_optim.init(_dual_params)
 
-        if "16" in cfg.mp_policy:
-            _loss_scale = jmp.DynamicLossScale(
-                prec.cast_to_output(jnp.float32(2 ** 15))
-            )
+        self._state_path = cfg.logdir + "/learner_state.pickle"
+        if os.path.exists(self._state_path):
+            with open(self._state_path, "rb") as state_file:
+                _state = pickle.load(state_file)
+            self._state = jax.device_put(_state)
+            _params = _state.params
+            print(f"Loaded {hk.data_structures.tree_size(_params)} "
+                  "weights.")
         else:
-            _loss_scale = jmp.NoOpLossScale()
+            _params = networks.init(subkey)
+            # Duct tape.
+            last_bias = _params["actor/linear"]["b"]
+            if cfg.discretize:
+                act_dim = last_bias.size // cfg.nbins
+            else:
+                act_dim = last_bias.size // 2
+            _dual_params = Duals(
+                log_temperature=jnp.array(cfg.init_log_temperature),
+                log_alpha_mean=jnp.full(act_dim, cfg.init_log_alpha_mean),
+                log_alpha_std=jnp.full(act_dim, cfg.init_log_alpha_std)
+            )
+            _dual_params = prec.cast_to_output(_dual_params)
 
+            _optim_state = optim.init(_params)
+            _dual_optim_state = dual_optim.init(_dual_params)
+
+            if "16" in cfg.mp_policy:
+                _loss_scale = jmp.DynamicLossScale(
+                    prec.cast_to_output(jnp.float32(2 ** 15))
+                )
+            else:
+                _loss_scale = jmp.NoOpLossScale()
+
+            self._state = MPOState(
+                params=_params,
+                target_params=_params,
+                dual_params=_dual_params,
+                optim_state=_optim_state,
+                dual_optim_state=_dual_optim_state,
+                rng_key=key,
+                loss_scale=_loss_scale,
+                step=jnp.array(0, dtype=jnp.int32)
+            )
+
+        client.insert(_params, {"weights": 1})
         param_groups = networks.split_params(_params)
         names = ("Actor", "Encoder", "Critic")
         for pg, name in zip(param_groups, names):
             print(f"{name} params: {hk.data_structures.tree_size(pg)}")
-
-        self._state = MPOState(
-            params=_params,
-            target_params=_params,
-            dual_params=_dual_params,
-            optim_state=_optim_state,
-            dual_optim_state=_dual_optim_state,
-            rng_key=key,
-            loss_scale=_loss_scale,
-            step=jnp.array(0, dtype=jnp.int32)
-        )
 
         def mpo_loss(params,
                      dual_params,
@@ -239,7 +241,7 @@ class MPOLearner:
                 online = networks.make_policy(*logits)
                 a_t = a_t.reshape(original_shape)
                 actor_loss, metrics_logits = policy_loss(
-                    online, a_t, alpha_mean, cfg.epsilon_eta, prefix="mean"
+                    online, a_t, alpha_mean, cfg.epsilon_mean, prefix="mean"
                 )
                 total_loss =\
                     critic_loss + actor_loss + temperature_loss
@@ -377,20 +379,27 @@ class MPOLearner:
         logger = TFSummaryLogger(logdir=self._cfg.logdir,
                                  label="train",
                                  step_key="step")
+        should_dump_params = env_loop.Every(self._cfg.learner_dump_every)
+        should_save_state = env_loop.Every(self._cfg.save_every)
+        should_log = env_loop.Every(self._cfg.log_every)
+
         while True:
             data = next(self._data_iterator)
             info, data = data
             self._state, metrics = self._step(self._state, data)
 
-            step = self._state.step.item()
-            params = self._state.params
-            self._client.insert(params, {"weights": 1.})
-            if step % self._cfg.learner_dump_every == 0:
-                with open(self._cfg.logdir + "/weights.pkl", "wb") as weights:
-                    pickle.dump(params, weights)
+            state = jax.device_get(self._state)
+            step = state.step.item()
+
+            if should_dump_params(step):
+                self._client.insert(state.params, {"weights": 1.})
+
+            if should_save_state(step):
+                with open(self._state_path, "wb") as state_file:
+                    pickle.dump(state, state_file)
                 self._client.checkpoint()
 
-            if step % self._cfg.log_every == 0:
+            if should_log(step):
                 chex.assert_rank(list(metrics.values()), 0)
                 metrics = jax.tree_util.tree_map(float, metrics)
                 metrics["step"] = step

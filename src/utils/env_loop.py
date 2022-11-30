@@ -7,10 +7,9 @@ import dm_env
 import numpy as np
 import reverb
 
-from src import GOAL_KEY
-
 Action = Array = np.ndarray
 Observation = Dict[str, Array]
+Goals = Tuple[str, ...]
 
 
 class Trajectory(TypedDict, total=False):
@@ -19,6 +18,20 @@ class Trajectory(TypedDict, total=False):
     rewards: List[float]
     discounts: List[float]
     next_observations: List[Observation]
+
+
+class Every:
+    def __init__(self, interval: int):
+        self.interval = interval
+        self._prev_step = 0
+
+    def __call__(self, step: int) -> bool:
+        assert step >= self._prev_step
+        diff = step - self._prev_step
+        if diff >= self.interval:
+            self._prev_step = step
+            return True
+        return False
 
 
 def environment_loop(env: dm_env.Environment,
@@ -86,7 +99,8 @@ def n_step_fn(trajectory: Trajectory,
 
 def goal_augmentation(trajectory: Trajectory,
                       rng: np.random.Generator,
-                      goal_source: str,
+                      goal_sources: Goals,
+                      goal_targets: Goals,
                       strategy: str = "none",
                       discount: float = 1.,
                       amount: int = 1,
@@ -97,10 +111,11 @@ def goal_augmentation(trajectory: Trajectory,
 
     trajectories = [trajectory]
     if strategy == "final":
-        hindsight_goal = trajectory["observations"][-1][goal_source]
         aug = copy.deepcopy(trajectory)
-        for obs in aug["observations"]:
-            obs[GOAL_KEY] = hindsight_goal
+        for gs, gt in zip(goal_sources, goal_targets):
+            hindsight_goal = trajectory["observations"][-1][gs]
+            for obs in aug["observations"]:
+                obs[gt] = hindsight_goal
         aug["rewards"][-1] = 1.
         trajectories.extend(amount * [aug])
     elif strategy == "future":
@@ -112,7 +127,8 @@ def goal_augmentation(trajectory: Trajectory,
                 slice(0, i), trajectory,
                 is_leaf=lambda x: isinstance(x, list)
             )
-            aug = goal_augmentation(tr, rng, goal_source, "final", 1)
+            aug = goal_augmentation(
+                tr, rng, goal_sources, goal_targets, "final", 1)
             trajectories.append(aug[-1])
     else:
         raise ValueError(strategy)
@@ -126,21 +142,24 @@ class Adder:
                  rng: np.random.Generator,
                  n_step: int = 1,
                  discount: float = .99,
-                 goal_source: str = r"$^",
+                 goal_sources: Goals = (),
+                 goal_targets: Goals = (),
                  aug_strategy: str = "none",
                  amount: int = 1
                  ):
         self._client = client
+        self._rng = rng
         self._n_step_fn = lambda tr: n_step_fn(tr, n_step, discount)
 
-        self._augmentation_fn = lambda tr: goal_augmentation(
-            tr, rng, goal_source,
-            aug_strategy,
-            discount, amount
+        assert len(goal_sources) == len(goal_targets),\
+            "Sources and targets must be paired."
+        self._augmentation_fn = lambda tr, r: goal_augmentation(
+            tr, r, goal_sources, goal_targets,
+            aug_strategy, discount, amount
         )
 
     def __call__(self, trajectory: Trajectory):
-        trajectories = self._augmentation_fn(trajectory)
+        trajectories = self._augmentation_fn(trajectory, self._rng)
         trajectories = map(self._n_step_fn, trajectories)
         for tr in trajectories:
             self._insert(tr)

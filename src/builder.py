@@ -19,25 +19,35 @@ from src.utils import envs
 
 
 class Builder:
-    def __init__(self, config: MPOConfig):
-        self.cfg = config
-        # TODO: change rng to numpy since jax.PRNG may use GPU w/o purpose.
-        rng = jax.random.PRNGKey(config.seed)
-        self._actor_rng, self._learner_rng, self._env_rng = \
-            jax.random.split(rng, 3)
 
-        prev_steps = self.cfg.logdir + "/total_steps"
-        if os.path.exists(prev_steps):
-            with open(prev_steps, "rb") as f:
+    def __init__(self, config: MPOConfig):
+        path = os.path.expanduser(config.logdir)
+        if not os.path.exists(path):
+            os.makedirs(path)
+        path = config.logdir + "/config.yaml"
+        if os.path.exists(path):
+            config = MPOConfig.load(path)
+        else:
+            config.save(path)
+        self.cfg = config
+
+        rng = jax.random.PRNGKey(config.seed)
+        self.rng = jax.device_get(rng)
+
+        path = self.cfg.logdir + "/total_steps.pickle"
+        if os.path.exists(path):
+            with open(path, "rb") as f:
                 val = pickle.load(f)
         else:
             val = 0
         self._total_steps = mp.Value("i", val)
 
-    def make_server(self, env_specs: EnvironmentSpecs):
+    def make_server(self,
+                    random_key: jax.random.PRNGKey,
+                    env_specs: EnvironmentSpecs,
+                    ):
         networks = self.make_networks(env_specs)
-        self._actor_rng, rng = jax.random.split(self._actor_rng)
-        params = networks.init(rng)
+        params = networks.init(random_key)
 
         def to_tf_spec(spec):
             fn = lambda sp: tf.TensorSpec(tuple(sp.shape), dtype=sp.dtype)
@@ -88,7 +98,6 @@ class Builder:
             server_address=server_address,
             table="replay_buffer",
             max_in_flight_samples_per_worker=2 * self.cfg.batch_size,
-            get_signature_timeout_secs=100
         )
         ds = ds.batch(self.cfg.batch_size, drop_remainder=True)
         ds = ds.prefetch(5)
@@ -100,28 +109,28 @@ class Builder:
                              env_specs.action_spec)
 
     def make_learner(self,
+                     random_key: jax.random.PRNGKey,
                      env_specs: EnvironmentSpecs,
                      iterator: tf.data.Dataset,
                      client: reverb.Client
                      ):
-        self._learner_rng, rng_key = jax.random.split(self._learner_rng)
         networks = self.make_networks(env_specs)
-        return MPOLearner(rng_key, self.cfg, env_specs,
+        return MPOLearner(random_key, self.cfg, env_specs,
                           networks, iterator, client)
 
     def make_actor(self,
+                   random_key: jax.random.PRNGKey,
                    env: dm_env.Environment,
                    env_specs: EnvironmentSpecs,
                    client: reverb.Client
                    ):
-        self._actor_rng, rng_key = jax.random.split(self._actor_rng)
         networks = self.make_networks(env_specs)
-        return Actor(rng_key, env, self.cfg,
+        return Actor(random_key, env, self.cfg,
                      networks, client, self._total_steps)
 
-    def make_env(self):
-        self._env_rng, seed = jax.random.split(self._env_rng)
-        seed = np.random.RandomState(seed)
+    def make_env(self, random_key: jax.random.PRNGKey):
+
+        seed = jax.random.randint(random_key, (), 0, 2**16).item()
         domain, task = self.cfg.task.split("_", 1)
         if domain == "dmc":
             env = envs.DMC(task, seed, self.cfg.img_size, 0, self.cfg.pn_number)
