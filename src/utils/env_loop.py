@@ -53,7 +53,7 @@ def environment_loop(env: dm_env.Environment,
         trajectory["observations"].append(obs)
         trajectory["actions"].append(action)
         trajectory["rewards"].append(timestep.reward)
-        trajectory["discounts"].append(1. - timestep.last())
+        trajectory["discounts"].append(timestep.discount)
 
     trajectory["observations"].append(timestep.observation)
     return trajectory, timestep
@@ -117,6 +117,7 @@ def goal_augmentation(trajectory: Trajectory,
             for obs in aug["observations"]:
                 obs[gt] = hindsight_goal
         aug["rewards"][-1] = 1.
+        aug["discounts"][-1] = 0.
         trajectories.extend(amount * [aug])
     elif strategy == "future":
         discounts = discount * np.asarray(trajectory["discounts"])

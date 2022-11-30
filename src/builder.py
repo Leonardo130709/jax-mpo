@@ -5,7 +5,6 @@ import multiprocessing as mp
 import dm_env
 import jax
 import reverb
-import numpy as np
 import tensorflow as tf
 tf.config.set_visible_devices([], "GPU")
 
@@ -13,7 +12,7 @@ from rltools import dmc_wrappers
 from rltools.dmc_wrappers import EnvironmentSpecs
 from src.config import MPOConfig
 from src.actor import Actor
-from src.networks import make_networks
+from src.networks import make_networks, MPONetworks
 from src.learner import MPOLearner
 from src.utils import envs
 
@@ -24,6 +23,7 @@ class Builder:
         path = os.path.expanduser(config.logdir)
         if not os.path.exists(path):
             os.makedirs(path)
+
         path = config.logdir + "/config.yaml"
         if os.path.exists(path):
             config = MPOConfig.load(path)
@@ -45,7 +45,7 @@ class Builder:
     def make_server(self,
                     random_key: jax.random.PRNGKey,
                     env_specs: EnvironmentSpecs,
-                    ):
+                    ) -> reverb.Server:
         networks = self.make_networks(env_specs)
         params = networks.init(random_key)
 
@@ -93,7 +93,7 @@ class Builder:
                                checkpointer)
         return server
 
-    def make_dataset_iterator(self, server_address: str):
+    def make_dataset_iterator(self, server_address: str) -> tf.data.Dataset:
         ds: tf.data.Dataset = reverb.TrajectoryDataset.from_table_signature(
             server_address=server_address,
             table="replay_buffer",
@@ -103,7 +103,7 @@ class Builder:
         ds = ds.prefetch(5)
         return ds.as_numpy_iterator()
 
-    def make_networks(self, env_specs: EnvironmentSpecs):
+    def make_networks(self, env_specs: EnvironmentSpecs) -> MPONetworks:
         return make_networks(self.cfg,
                              env_specs.observation_spec,
                              env_specs.action_spec)
@@ -113,7 +113,7 @@ class Builder:
                      env_specs: EnvironmentSpecs,
                      iterator: tf.data.Dataset,
                      client: reverb.Client
-                     ):
+                     ) -> MPOLearner:
         networks = self.make_networks(env_specs)
         return MPOLearner(random_key, self.cfg, env_specs,
                           networks, iterator, client)
@@ -123,12 +123,13 @@ class Builder:
                    env: dm_env.Environment,
                    env_specs: EnvironmentSpecs,
                    client: reverb.Client
-                   ):
+                   ) -> Actor:
         networks = self.make_networks(env_specs)
         return Actor(random_key, env, self.cfg,
                      networks, client, self._total_steps)
 
-    def make_env(self, random_key: jax.random.PRNGKey):
+    def make_env(self, random_key: jax.random.PRNGKey
+                 ) -> tuple[dm_env.Environment, EnvironmentSpecs]:
 
         seed = jax.random.randint(random_key, (), 0, 2**16).item()
         domain, task = self.cfg.task.split("_", 1)
@@ -163,7 +164,7 @@ def _make_env():
     mem = sys.modules.get("src")
     sys.modules["src"] = module
     spec.loader.exec_module(module)
-    from src.tasks.lift import Lift as Reach
+    from src.tasks.fetch_pick import FetchPick as Reach
     t = Reach()
     if mem is not None:
         sys.modules["src"] = mem

@@ -92,7 +92,7 @@ class MPOConfig(Config):
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
     #  HER.
-    goal_sources: tuple[str, ...] = ("kinect", "box/position")
+    goal_sources: tuple[str, ...] = ("kinect/image", "box/position")
     goal_targets: tuple[str, ...] = ("goal_image", "goal_pos")
     augmentation_strategy: str = "final"
     num_augmentations: int = 1
@@ -131,11 +131,11 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 1e-4
+    learning_rate: float = 3e-4
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
-    adam_eps: float = 1e-6
+    adam_eps: float = 1e-5
     weight_decay: float = 1e-6
     target_actor_update_period: int = 100
     target_critic_update_period: int = 100
@@ -156,5 +156,5 @@ class MPOConfig(Config):
     total_steps: int = 1e9
     time_limit: int = 200
     discretize: bool = True
-    nbins: int = 9
+    nbins: int = 11
     use_ordinal: bool = False

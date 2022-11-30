@@ -1,4 +1,3 @@
-import re
 import time
 import pickle
 import multiprocessing as mp
