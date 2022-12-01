@@ -89,11 +89,11 @@ class MPOConfig(Config):
     epsilon_mean: float = 1e-3
     epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
-    init_log_alpha_mean: float = 10.
+    init_log_alpha_mean: float = 100.
     init_log_alpha_std: float = 1000.
     #  HER.
-    goal_sources: tuple[str, ...] = ("kinect/image", "box/position")
-    goal_targets: tuple[str, ...] = ("goal_image", "goal_pos")
+    goal_sources: tuple[str, ...] = ("box/position",)
+    goal_targets: tuple[str, ...] = ("goal_pos",)
     augmentation_strategy: str = "final"
     num_augmentations: int = 1
 
@@ -101,7 +101,7 @@ class MPOConfig(Config):
     activation: str = "elu"
     normalization: str = "layer"
     #   Encoder
-    keys: str = r"(ur5e|goal_pos|box).*"
+    keys: str = r"ur5e|goal_pos|box"
     mlp_layers: Layers = ()
     pn_number: int = 1000
     img_size: tuple[int, int] = (84, 84)
@@ -139,7 +139,7 @@ class MPOConfig(Config):
     weight_decay: float = 1e-6
     target_actor_update_period: int = 100
     target_critic_update_period: int = 100
-    max_seq_len: int = 50
+    max_seq_len: int = 100
     eval_every: int = 1e4
     log_every: int = 1e2
     save_every: int = 40_000

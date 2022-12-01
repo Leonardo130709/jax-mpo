@@ -144,6 +144,7 @@ class Builder:
         else:
             raise NotImplementedError
 
+        env = dmc_wrappers.ObsFilter(env, self.cfg.keys)
         env = dmc_wrappers.ActionRepeat(env, self.cfg.action_repeat)
         if self.cfg.discretize:
             env = dmc_wrappers.DiscreteActionWrapper(env, self.cfg.nbins)
