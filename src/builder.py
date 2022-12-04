@@ -158,7 +158,7 @@ def _make_env():
     import importlib
     from dm_control import composer
 
-    path = "/home/khromykhla/Documents/github/ur_mujoco/src/__init__.py"
+    path = "/home/leonid/ur_mujoco/src/__init__.py"
 
     spec = importlib.util.spec_from_file_location("src", path)
     module = importlib.util.module_from_spec(spec)

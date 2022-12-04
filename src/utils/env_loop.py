@@ -64,9 +64,8 @@ def n_step_fn(trajectory: Trajectory,
               discount: float = .99
               ) -> Trajectory:
     """Computes N-step rewards for the trajectory."""
-    res = copy.deepcopy(trajectory)
     obs, rewards, disc = map(
-        res.get,
+        trajectory.get,
         ("observations", "rewards", "discounts")
     )
     length = len(rewards)
@@ -77,11 +76,11 @@ def n_step_fn(trajectory: Trajectory,
         (length - n_step) * [discount_n] + \
         [is_not_terminal * discount ** i for i in range(n_step, 0, -1)]
 
-    res["next_observations"] = next_obs
-    res["discounts"] = discounts
+    trajectory["next_observations"] = next_obs
+    trajectory["discounts"] = discounts
 
     if n_step == 1:
-        return res
+        return trajectory
 
     n_step_rewards = []
     reward = 0
@@ -93,8 +92,8 @@ def n_step_fn(trajectory: Trajectory,
         prev_rewards.appendleft(r)
         n_step_rewards.append(reward)
 
-    res["rewards"] = n_step_rewards[::-1]
-    return res
+    trajectory["rewards"] = n_step_rewards[::-1]
+    return trajectory
 
 
 def goal_augmentation(trajectory: Trajectory,
