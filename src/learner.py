@@ -306,9 +306,12 @@ class MPOLearner:
                     step,
                     cfg.target_critic_update_period
                 )
-            target_params.update(target_actor_params)
-            target_params.update(target_encoder_params)
-            target_params.update(target_critic_params)
+            target_params = hk.data_structures.merge(
+                target_actor_params,
+                target_encoder_params,
+                target_critic_params,
+                check_duplicates=True
+            )
 
             return mpostate._replace(
                 params=params,

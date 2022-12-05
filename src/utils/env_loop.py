@@ -21,6 +21,7 @@ class Trajectory(TypedDict, total=False):
 
 
 class Every:
+
     def __init__(self, interval: int):
         self.interval = interval
         self._prev_step = 0
