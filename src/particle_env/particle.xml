@@ -1,0 +1,14 @@
+<mujoco model="particle">
+
+    <option gravity="0 0 0" timestep=".05"/>
+
+    <worldbody>
+        <light name="light" pos = "0 0 3"/>
+        <geom name="floor" size = "3 3 .2" type="plane"/>
+        <camera name="fixed" pos="0 0 2" zaxis="0 0 1"/>
+        <body name="particle" pos="0 0 .1" mocap="true">
+            <geom name="particle" type="sphere"
+                  size=".03" mass="1" rgba="1 0 0 1"/>
+        </body>
+    </worldbody>
+</mujoco>

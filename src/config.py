@@ -85,14 +85,14 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 2e-2
+    epsilon_eta: float = 1e-1
     epsilon_mean: float = 1e-2
     epsilon_std: float = 1e-6
     init_log_temperature: float = 1.
     init_log_alpha_mean: float = 1.
     init_log_alpha_std: float = 1000.
     #  HER.
-    goal_sources: tuple[str, ...] = ("box/position",)
+    goal_sources: tuple[str, ...] = ("pos",)
     goal_targets: tuple[str, ...] = ("goal_pos",)
     augmentation_strategy: str = "none"
     num_augmentations: int = 4
@@ -101,7 +101,7 @@ class MPOConfig(Config):
     activation: str = "elu"
     normalization: str = "layer"
     #   Encoder
-    keys: str = r".*"
+    keys: str = r"pos"
     mlp_layers: Layers = ()
     pn_number: int = 1000
     img_size: tuple[int, int] = (84, 84)
@@ -135,11 +135,11 @@ class MPOConfig(Config):
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
-    adam_eps: float = 1e-5
+    adam_eps: float = 1e-6
     weight_decay: float = 1e-6
     target_actor_update_period: int = 100
     target_critic_update_period: int = 100
-    max_seq_len: int = 50
+    max_seq_len: int = 55
     eval_every: int = 1e4
     log_every: int = 1e2
     save_every: int = 40_000
@@ -151,10 +151,10 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "dmc_walker_walk"
-    logdir: str = "logdir/walker_walk_features"
+    task: str = "particle_reach"
+    logdir: str = "logdir/particle_reach_features"
     total_steps: int = 1e9
     time_limit: int = 1000
-    discretize: bool = True
+    discretize: bool = False
     nbins: int = 11
     use_ordinal: bool = False

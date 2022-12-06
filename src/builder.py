@@ -141,6 +141,10 @@ class Builder:
             env = envs.UR5(address, self.cfg.img_size, self.cfg.pn_number)
         elif domain == "src":
             env = _make_env()
+        elif domain == "particle":
+            from src.particle_env import ParticleEnv
+            # episode_steps = time_limit / (physics_timestep:default=.05)
+            env = ParticleEnv(time_limit=5, random_state=seed)
         else:
             raise NotImplementedError
 
