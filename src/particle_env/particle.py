@@ -110,6 +110,10 @@ class ParticleReach(composer.Task):
         dist = np.linalg.norm(target_site.xpos - pos)
         return float(dist < THRESHOLD)
 
+    def should_terminate_episode(self, physics):
+        goal_achieved = self.get_reward(physics) == 1.
+        return goal_achieved
+
     def action_spec(self, physics):
         lim = np.float32([1, 1])
         return specs.BoundedArray(
