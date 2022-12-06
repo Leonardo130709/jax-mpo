@@ -233,8 +233,9 @@ class Encoder(hk.Module):
     def __call__(self, obs: Dict[str, jnp.ndarray]) -> jnp.ndarray:
         """Works with unbatched inputs,
         since there are jax.vmap and hk.BatchApply."""
-        obs = {k: v for k, v in obs.items() if re.match(self.keys, k)}
+        obs = {k: v for k, v in obs.items() if re.search(self.keys, k)}
         chex.assert_rank(list(obs.values()), {1, 2, 3})
+        print("Selected obss: ", obs.keys())
         mlp_features, pn_features, cnn_features = _ndim_partition(obs)
         outputs = []
 
@@ -243,7 +244,7 @@ class Encoder(hk.Module):
             mlp_features = jnp.concatenate(mlp_features, -1)
             # Also fuse these features with the multidimensional inputs.
             fuse_with = filter(
-                lambda k: re.match(self.feature_fusion, k), obs.keys()
+                lambda k: re.search(self.feature_fusion, k), obs.keys()
             )
             fuse_with = tuple(fuse_with)
             sources = [pn_features, cnn_features]

@@ -21,6 +21,7 @@ class Trajectory(TypedDict, total=False):
 
 
 class Every:
+
     def __init__(self, interval: int):
         self.interval = interval
         self._prev_step = 0
@@ -53,7 +54,7 @@ def environment_loop(env: dm_env.Environment,
         trajectory["observations"].append(obs)
         trajectory["actions"].append(action)
         trajectory["rewards"].append(timestep.reward)
-        trajectory["discounts"].append(1. - timestep.last())
+        trajectory["discounts"].append(timestep.discount)
 
     trajectory["observations"].append(timestep.observation)
     return trajectory, timestep
@@ -64,9 +65,8 @@ def n_step_fn(trajectory: Trajectory,
               discount: float = .99
               ) -> Trajectory:
     """Computes N-step rewards for the trajectory."""
-    res = copy.deepcopy(trajectory)
     obs, rewards, disc = map(
-        res.get,
+        trajectory.get,
         ("observations", "rewards", "discounts")
     )
     length = len(rewards)
@@ -77,11 +77,11 @@ def n_step_fn(trajectory: Trajectory,
         (length - n_step) * [discount_n] + \
         [is_not_terminal * discount ** i for i in range(n_step, 0, -1)]
 
-    res["next_observations"] = next_obs
-    res["discounts"] = discounts
+    trajectory["next_observations"] = next_obs
+    trajectory["discounts"] = discounts
 
     if n_step == 1:
-        return res
+        return trajectory
 
     n_step_rewards = []
     reward = 0
@@ -93,8 +93,8 @@ def n_step_fn(trajectory: Trajectory,
         prev_rewards.appendleft(r)
         n_step_rewards.append(reward)
 
-    res["rewards"] = n_step_rewards[::-1]
-    return res
+    trajectory["rewards"] = n_step_rewards[::-1]
+    return trajectory
 
 
 def goal_augmentation(trajectory: Trajectory,
@@ -117,6 +117,7 @@ def goal_augmentation(trajectory: Trajectory,
             for obs in aug["observations"]:
                 obs[gt] = hindsight_goal
         aug["rewards"][-1] = 1.
+        aug["discounts"][-1] = 0.
         trajectories.extend(amount * [aug])
     elif strategy == "future":
         discounts = discount * np.asarray(trajectory["discounts"])

@@ -32,7 +32,7 @@ def run_server(builder, server_rng, env_specs):
 
 def main(config):
     builder = Builder(config)
-    rngs = jax.random.split(builder.rng, builder.cfg.num_actors + 4)
+    rngs = jax.random.split(builder.rng, 2*builder.cfg.num_actors + 3)
     rngs = jax.device_get(rngs)
     _, env_specs = builder.make_env(rngs[-1])
     server_address = f"localhost:{config.reverb_port}"
@@ -48,7 +48,7 @@ def main(config):
     for i in range(config.num_actors):
         actor = mp.Process(
             target=run_actor,
-            args=(builder, rngs[-4], rngs[i], server_address)
+            args=(builder, rngs[2*i], rngs[2*i+1], server_address)
         )
         actor.start()
         actors.append(actor)
