@@ -119,11 +119,15 @@ def goal_augmentation(trajectory: Trajectory,
         aug["rewards"][-1] = 1.
         aug["discounts"][-1] = 0.
         trajectories.extend(amount * [aug])
-    elif strategy == "future":
-        discounts = discount * np.asarray(trajectory["discounts"])
-        term_idx = sample_from_geometrical(rng, discounts, amount)
-        term_idx = np.clip(term_idx, a_max=len(discounts) - 1, a_min=2)
-        for i in term_idx.tolist():
+    elif strategy in ("future", "geom"):
+        length = len(trajectory["actions"])
+        if strategy == "future":
+            term_idx = rng.choice(length, size=amount)
+        else:
+            discounts = discount * np.asarray(trajectory["discounts"])
+            term_idx = sample_from_geometrical(rng, discounts, amount)
+        term_idx = np.clip(term_idx, a_min=1)
+        for i in term_idx:
             tr = tree_slice(
                 slice(0, i), trajectory,
                 is_leaf=lambda x: isinstance(x, list)
@@ -191,7 +195,7 @@ def tree_slice(sl, tree, is_leaf=None):
 
 def sample_from_geometrical(rng: np.random.Generator,
                             discount_t: np.ndarray,
-                            size: tuple = ()
+                            size: int
                             ) -> np.ndarray:
     # P(t) ~ \prod^t_0 d_i * (1 - d_t)
     cont_prob_t = np.concatenate([

@@ -75,9 +75,9 @@ class MPOConfig(Config):
     """
 
     # Algorithm
-    discount: float = .99
+    discount: float = .98
     action_repeat: int = 1
-    n_step: int = 5
+    n_step: int = 1
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
@@ -85,8 +85,8 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 1e-1
-    epsilon_mean: float = 1e-2
+    epsilon_eta: float = 2e-2
+    epsilon_mean: float = 2e-3
     epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
@@ -123,15 +123,15 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 1e3
-    samples_per_insert: int = 32
+    samples_per_insert: int = 8
     batch_size: int = 256
-    buffer_capacity: int = 1e6
+    buffer_capacity: int = 1e5
     actor_update_every: int = 1
     learner_dump_every: int = 1
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 3e-4
+    learning_rate: float = 1e-3
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
@@ -139,11 +139,11 @@ class MPOConfig(Config):
     weight_decay: float = 1e-6
     target_actor_update_period: int = 100
     target_critic_update_period: int = 100
-    max_seq_len: int = 55
+    max_seq_len: int = 1000
     eval_every: int = 1e4
     log_every: int = 1e2
     save_every: int = 40_000
-    eval_times: int = 15
+    eval_times: int = 10
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
@@ -152,9 +152,9 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "particle_reach"
-    logdir: str = "logdir/particle_reach_features"
+    logdir: str = "logdir/particle_reach_no_nstep"
     total_steps: int = 1e9
     time_limit: int = 1000
-    discretize: bool = False
-    nbins: int = 11
+    discretize: bool = True
+    nbins: int = 13
     use_ordinal: bool = False
