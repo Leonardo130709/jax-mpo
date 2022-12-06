@@ -235,6 +235,7 @@ class Encoder(hk.Module):
         since there are jax.vmap and hk.BatchApply."""
         obs = {k: v for k, v in obs.items() if re.search(self.keys, k)}
         chex.assert_rank(list(obs.values()), {1, 2, 3})
+        print("Selected obss: ", obs.keys())
         mlp_features, pn_features, cnn_features = _ndim_partition(obs)
         outputs = []
 

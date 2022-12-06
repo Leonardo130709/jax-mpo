@@ -71,12 +71,15 @@ class DMC(dm_env.Environment):
                 obs_spec['jaco_arm/joints_pos'].replace(shape=(12,))
             # obs_spec[GOAL_KEY] = obs_spec["target_position"]
         else:
+            img_shape = self.size + (3,)
             # obs_spec.update(
             #     depth_map=Array(self.size + (1,), np.float32),
             #     point_cloud=Array((self.pn_number, 3), np.float32),
-            #     image=specs.Array(self.size + (3,), np.uint8)
+            #     image=specs.BoundedArray(
+            #         img_shape, np.uint8,
+            #         np.full(img_shape, 0), np.full(img_shape, 255)
+            #     )
             # )
-            pass
         return obs_spec
 
     def _update_obs(self, obs):
@@ -92,9 +95,9 @@ class DMC(dm_env.Environment):
             # depth_map = physics.render(*self.size, camera_id=self.camera, depth=True)
             # depth_map = depth_map[..., None]
             # obs.update(
-                # point_cloud=self._pcg(physics).astype(np.float32),
-                # image=physics.render(*self.size, camera_id=self.camera),
-                # depth_map=depth_map
+            #     # point_cloud=self._pcg(physics).astype(np.float32),
+            #     image=physics.render(*self.size, camera_id=self.camera),
+            #     # depth_map=depth_map
             # )
         return obs
 
