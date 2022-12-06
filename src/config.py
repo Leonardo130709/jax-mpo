@@ -92,7 +92,7 @@ class MPOConfig(Config):
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
     #  HER.
-    goal_sources: tuple[str, ...] = ("pos",)
+    goal_sources: tuple[str, ...] = ("box/position",)
     goal_targets: tuple[str, ...] = ("goal_pos",)
     augmentation_strategy: str = "none"
     num_augmentations: int = 4
@@ -101,7 +101,7 @@ class MPOConfig(Config):
     activation: str = "elu"
     normalization: str = "layer"
     #   Encoder
-    keys: str = r"pos"
+    keys: str = r"ur5e|goal_pos|box"
     mlp_layers: Layers = ()
     pn_number: int = 1000
     img_size: tuple[int, int] = (84, 84)
@@ -122,7 +122,7 @@ class MPOConfig(Config):
     quantile_embedding_dim: int = 64
 
     # reverb
-    min_replay_size: int = 1e3
+    min_replay_size: int = 5e3
     samples_per_insert: int = 8
     batch_size: int = 256
     buffer_capacity: int = 1e5
@@ -151,10 +151,10 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "particle_reach"
-    logdir: str = "logdir/particle_reach_no_nstep"
+    task: str = "src_fetch"
+    logdir: str = "logdir/src_fetch_nonstep_features"
     total_steps: int = 1e9
-    time_limit: int = 1000
+    time_limit: int = 200
     discretize: bool = True
     nbins: int = 13
     use_ordinal: bool = False

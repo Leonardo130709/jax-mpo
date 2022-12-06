@@ -169,8 +169,8 @@ def _make_env():
     mem = sys.modules.get("src")
     sys.modules["src"] = module
     spec.loader.exec_module(module)
-    from src.tasks.fetch_pick import FetchPick as Reach
-    t = Reach()
+    from src.tasks import FetchPick
+    t = FetchPick()
     if mem is not None:
         sys.modules["src"] = mem
     return composer.Environment(t, time_limit=30,

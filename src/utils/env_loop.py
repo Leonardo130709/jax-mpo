@@ -65,6 +65,7 @@ def n_step_fn(trajectory: Trajectory,
               discount: float = .99
               ) -> Trajectory:
     """Computes N-step rewards for the trajectory."""
+    trajectory = trajectory.copy()
     obs, rewards, disc = map(
         trajectory.get,
         ("observations", "rewards", "discounts")
@@ -126,7 +127,7 @@ def goal_augmentation(trajectory: Trajectory,
         else:
             discounts = discount * np.asarray(trajectory["discounts"])
             term_idx = sample_from_geometrical(rng, discounts, amount)
-        term_idx = np.clip(term_idx, a_min=1)
+        term_idx = np.clip(term_idx, a_min=2, a_max=length-1)
         for i in term_idx:
             tr = tree_slice(
                 slice(0, i), trajectory,
