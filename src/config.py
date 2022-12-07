@@ -85,16 +85,16 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 2e-2
-    epsilon_mean: float = 2e-3
+    epsilon_eta: float = 1e-2
+    epsilon_mean: float = 1e-3
     epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
-    init_log_alpha_mean: float = 10.
+    init_log_alpha_mean: float = 100.
     init_log_alpha_std: float = 1000.
     #  HER.
     goal_sources: tuple[str, ...] = ("box/position",)
     goal_targets: tuple[str, ...] = ("goal_pos",)
-    augmentation_strategy: str = "none"
+    augmentation_strategy: str = "future"
     num_augmentations: int = 4
 
     # Architecture
@@ -125,13 +125,13 @@ class MPOConfig(Config):
     min_replay_size: int = 5e3
     samples_per_insert: int = 8
     batch_size: int = 256
-    buffer_capacity: int = 1e5
+    buffer_capacity: int = 1e6
     actor_update_every: int = 1
     learner_dump_every: int = 1
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 1e-3
+    learning_rate: float = 1e-4
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
@@ -143,16 +143,16 @@ class MPOConfig(Config):
     eval_every: int = 1e4
     log_every: int = 1e2
     save_every: int = 40_000
-    eval_times: int = 10
+    eval_times: int = 20
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
-    num_actors: int = 4
+    num_actors: int = 8
 
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/src_fetch_nonstep_features"
+    logdir: str = "logdir/src_fetch_diffinit_features"
     total_steps: int = 1e9
     time_limit: int = 200
     discretize: bool = True
