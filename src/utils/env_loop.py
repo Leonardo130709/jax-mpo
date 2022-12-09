@@ -138,7 +138,7 @@ def goal_augmentation(trajectory: Trajectory,
                 is_leaf=lambda x: isinstance(x, list)
             )
             aug = goal_augmentation(
-                tr, rng, goal_sources, goal_targets, "final", 1)
+                tr, rng, goal_sources, goal_targets, achieved, "final", 1)
             trajectories.append(aug[-1])
     else:
         raise ValueError(strategy)
