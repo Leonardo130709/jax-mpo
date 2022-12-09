@@ -140,7 +140,7 @@ class Builder:
             address = ("10.201.2.136", 5553)
             env = envs.UR5(address, self.cfg.img_size, self.cfg.pn_number)
         elif domain == "src":
-            env = _make_env()
+            env = _make_env(seed)
         elif domain == "particle":
             from src.particle_env import ParticleEnv
             # episode_steps = time_limit / (physics_timestep:default=.05)
@@ -157,10 +157,9 @@ class Builder:
         return env, env.environment_specs
 
 
-def _make_env():
+def _make_env(rng):
     import sys
     import importlib
-    from dm_control import composer
 
     path = "/home/leonid/ur_mujoco/src/__init__.py"
 
@@ -169,9 +168,10 @@ def _make_env():
     mem = sys.modules.get("src")
     sys.modules["src"] = module
     spec.loader.exec_module(module)
-    from src.tasks import FetchPick
-    t = FetchPick()
+    from src import suite
+    env = suite.load('fetch',
+                     env_kwargs={'time_limit': 30, 'random_state': rng}
+                     )
     if mem is not None:
         sys.modules["src"] = mem
-    return composer.Environment(t, time_limit=30,
-                                strip_singleton_obs_buffer_dim=True)
+    return env

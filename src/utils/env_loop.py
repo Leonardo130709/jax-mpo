@@ -127,7 +127,7 @@ def goal_augmentation(trajectory: Trajectory,
         else:
             discounts = discount * np.asarray(trajectory["discounts"])
             term_idx = sample_from_geometrical(rng, discounts, amount)
-        term_idx = np.clip(term_idx, a_min=2, a_max=length-1)
+        term_idx = np.clip(term_idx, a_min=3, a_max=length)
         for i in term_idx:
             tr = tree_slice(
                 slice(0, i), trajectory,
@@ -143,6 +143,7 @@ def goal_augmentation(trajectory: Trajectory,
 
 
 class Adder:
+
     def __init__(self,
                  client: reverb.Client,
                  rng: np.random.Generator,

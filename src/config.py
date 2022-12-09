@@ -85,8 +85,8 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 1e-2
-    epsilon_mean: float = 1e-3
+    epsilon_eta: float = 1e-1
+    epsilon_mean: float = 1e-2
     epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 100.
@@ -123,7 +123,7 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 5e3
-    samples_per_insert: int = 8
+    samples_per_insert: int = 16
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -131,7 +131,7 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 1e-4
+    learning_rate: float = 3e-4
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
@@ -152,9 +152,9 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/src_fetch_diffinit_features"
+    logdir: str = "logdir/src_fetch_compact"
     total_steps: int = 1e9
     time_limit: int = 200
-    discretize: bool = True
+    discretize: bool = False
     nbins: int = 13
     use_ordinal: bool = False
