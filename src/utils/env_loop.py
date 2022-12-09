@@ -102,26 +102,30 @@ def goal_augmentation(trajectory: Trajectory,
                       rng: np.random.Generator,
                       goal_sources: Goals,
                       goal_targets: Goals,
+                      achieved: Callable[[Observation, Observation], bool],
                       strategy: str = "none",
                       discount: float = 1.,
                       amount: int = 1,
                       ) -> List[Trajectory]:
     """Augments source trajectory with additional goals."""
+    length = len(trajectory["actions"])
     if strategy == "none":
         return [trajectory]
 
     trajectories = [trajectory]
     if strategy == "final":
         aug = copy.deepcopy(trajectory)
-        for gs, gt in zip(goal_sources, goal_targets):
-            hindsight_goal = trajectory["observations"][-1][gs]
-            for obs in aug["observations"]:
-                obs[gt] = hindsight_goal
-        aug["rewards"][-1] = 1.
-        aug["discounts"][-1] = 0.
+        final = aug["observations"][-1]
+        for i in range(length):
+            obs = aug["observations"][i]
+            next_obs = aug["observations"][i+1]
+            for gs, gt in zip(goal_sources, goal_targets):
+                obs[gt] = final[gs]
+            if achieved(next_obs, final):
+                aug["rewards"][i] = 1.
+                aug["discounts"][i] = 0.
         trajectories.extend(amount * [aug])
     elif strategy in ("future", "geom"):
-        length = len(trajectory["actions"])
         if strategy == "future":
             term_idx = rng.choice(length, size=amount)
         else:
@@ -142,6 +146,10 @@ def goal_augmentation(trajectory: Trajectory,
     return trajectories
 
 
+def _should_not_be_called(*args, **kwargs):
+    raise NotImplementedError
+
+
 class Adder:
 
     def __init__(self,
@@ -151,6 +159,7 @@ class Adder:
                  discount: float = .99,
                  goal_sources: Goals = (),
                  goal_targets: Goals = (),
+                 predicate: Callable = _should_not_be_called,
                  aug_strategy: str = "none",
                  amount: int = 1
                  ):
@@ -161,7 +170,8 @@ class Adder:
         assert len(goal_sources) == len(goal_targets),\
             "Sources and targets must be paired."
         self._augmentation_fn = lambda tr, r: goal_augmentation(
-            tr, r, goal_sources, goal_targets,
+            tr, r,
+            goal_sources, goal_targets, predicate,
             aug_strategy, discount, amount
         )
 

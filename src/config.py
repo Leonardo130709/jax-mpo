@@ -85,23 +85,23 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 1e-1
-    epsilon_mean: float = 1e-2
+    epsilon_eta: float = 2e-2
+    epsilon_mean: float = 2e-2
     epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
-    init_log_alpha_mean: float = 100.
+    init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
     #  HER.
-    goal_sources: tuple[str, ...] = ("box/position",)
+    goal_sources: tuple[str, ...] = ("pos",)
     goal_targets: tuple[str, ...] = ("goal_pos",)
-    augmentation_strategy: str = "future"
+    augmentation_strategy: str = "none"
     num_augmentations: int = 4
 
     # Architecture
     activation: str = "elu"
     normalization: str = "layer"
     #   Encoder
-    keys: str = r"ur5e|goal_pos|box"
+    keys: str = r"pos"
     mlp_layers: Layers = ()
     pn_number: int = 1000
     img_size: tuple[int, int] = (84, 84)
@@ -112,18 +112,18 @@ class MPOConfig(Config):
     feature_fusion: str = r"$^"
     #   Actor
     actor_backend: str = "cpu"
-    actor_layers: Layers = (256, 256, 256)
+    actor_layers: Layers = (128, 128, 128)
     min_std: float = .1
     init_std: float = .5
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: Layers = (512, 512, 256)
+    critic_layers: Layers = (256, 256, 128)
     quantile_embedding_dim: int = 64
 
     # reverb
     min_replay_size: int = 5e3
-    samples_per_insert: int = 16
+    samples_per_insert: int = 8
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -131,7 +131,7 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 3e-4
+    learning_rate: float = 1e-3
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
@@ -147,14 +147,14 @@ class MPOConfig(Config):
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
-    num_actors: int = 8
+    num_actors: int = 4
 
     # task
     seed: int = 0
-    task: str = "src_fetch"
-    logdir: str = "logdir/src_fetch_compact"
+    task: str = "particle_reach"
+    logdir: str = "logdir/particle_predicate_none"
     total_steps: int = 1e9
     time_limit: int = 200
-    discretize: bool = False
+    discretize: bool = True
     nbins: int = 13
     use_ordinal: bool = False

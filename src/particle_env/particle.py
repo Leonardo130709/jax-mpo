@@ -15,7 +15,7 @@ _XML_PATH = os.path.join(os.path.dirname(__file__), 'particle.xml')
 SCENE_LIM = .5
 HEIGHT_OFFSET = .1
 TARGET_SITE_SIZE = .02
-THRESHOLD = .005
+THRESHOLD = .01
 CTRL_LIMIT = .05
 _WIDTH, _HEIGHT = IMG_SIZE = (84, 84)
 
@@ -145,6 +145,13 @@ class ParticleReach(composer.Task):
 
     def is_ready(self):
         return self._goal_image is not None
+
+    @staticmethod
+    def compute_reward(achieved_state, desired_state):
+        ach_pos = achieved_state["pos"]
+        des_pos = desired_state["pos"]
+        dist = np.linalg.norm(ach_pos - des_pos)
+        return dist < THRESHOLD
 
 
 class ParticleEnv(composer.Environment):

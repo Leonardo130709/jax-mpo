@@ -83,6 +83,7 @@ class Actor:
                                      cfg.discount,
                                      cfg.goal_sources,
                                      cfg.goal_targets,
+                                     env.task.compute_reward,
                                      cfg.augmentation_strategy,
                                      cfg.num_augmentations
                                      )
