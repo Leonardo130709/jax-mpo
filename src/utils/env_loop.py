@@ -121,9 +121,9 @@ def goal_augmentation(trajectory: Trajectory,
             next_obs = aug["observations"][i+1]
             for gs, gt in zip(goal_sources, goal_targets):
                 obs[gt] = final[gs]
-            if achieved(next_obs, final):
-                aug["rewards"][i] = 1.
-                aug["discounts"][i] = 0.
+            is_achieved = float(achieved(next_obs, final))
+            aug["rewards"][i] = is_achieved
+            aug["discounts"][i] = 1. - is_achieved
         trajectories.extend(amount * [aug])
     elif strategy in ("future", "geom"):
         if strategy == "future":
@@ -131,12 +131,13 @@ def goal_augmentation(trajectory: Trajectory,
         else:
             discounts = discount * np.asarray(trajectory["discounts"])
             term_idx = sample_from_geometrical(rng, discounts, amount)
-        term_idx = np.clip(term_idx, a_min=3, a_max=length)
-        for i in term_idx:
+        term_idx = np.clip(term_idx, a_min=2, a_max=length)
+        for idx in term_idx:
             tr = tree_slice(
-                slice(0, i), trajectory,
+                slice(0, idx), trajectory,
                 is_leaf=lambda x: isinstance(x, list)
             )
+            tr["observations"].append(trajectory["observations"][idx])
             aug = goal_augmentation(
                 tr, rng, goal_sources, goal_targets, achieved, "final", 1)
             trajectories.append(aug[-1])
