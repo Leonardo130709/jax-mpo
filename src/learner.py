@@ -184,6 +184,7 @@ class MPOLearner:
                 q_tm1 = networks.critic(params, s_tm1, a_tm1)
                 v_t = jnp.mean(q_t, axis=0)
                 target_q_tm1 = sg(r_t + discount_t * v_t)
+                target_q_tm1 = jnp.clip(target_q_tm1, 0., 1.)
                 critic_loss = jnp.square(q_tm1 - target_q_tm1[..., jnp.newaxis])
                 critic_loss = .5 * jnp.mean(critic_loss)
 
