@@ -10,6 +10,7 @@ import reverb
 Action = Array = np.ndarray
 Observation = Dict[str, Array]
 Goals = Tuple[str, ...]
+HERComputeReward = Callable[[Observation, Observation], bool]
 
 
 class Trajectory(TypedDict, total=False):
@@ -102,7 +103,7 @@ def goal_augmentation(trajectory: Trajectory,
                       rng: np.random.Generator,
                       goal_sources: Goals,
                       goal_targets: Goals,
-                      achieved: Callable[[Observation, Observation], bool],
+                      achieved: HERComputeReward,
                       strategy: str = "none",
                       discount: float = 1.,
                       amount: int = 1,
@@ -148,7 +149,7 @@ def goal_augmentation(trajectory: Trajectory,
 
 
 def _should_not_be_called(*args, **kwargs):
-    raise NotImplementedError
+    raise RuntimeError("compute_reward_fn must be specified when using HER.")
 
 
 class Adder:
@@ -160,7 +161,7 @@ class Adder:
                  discount: float = .99,
                  goal_sources: Goals = (),
                  goal_targets: Goals = (),
-                 predicate: Callable = _should_not_be_called,
+                 predicate: HERComputeReward = _should_not_be_called,
                  aug_strategy: str = "none",
                  amount: int = 1
                  ):

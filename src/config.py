@@ -86,22 +86,22 @@ class MPOConfig(Config):
     #  MPO.
     tv_constraint: float = 1.
     epsilon_eta: float = 2e-2
-    epsilon_mean: float = 2e-2
+    epsilon_mean: float = 1e-2
     epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
     #  HER.
-    goal_sources: tuple[str, ...] = ("pos",)
+    goal_sources: tuple[str, ...] = ("box/position",)
     goal_targets: tuple[str, ...] = ("goal_pos",)
-    augmentation_strategy: str = "none"
+    augmentation_strategy: str = "future"
     num_augmentations: int = 4
 
     # Architecture
     activation: str = "elu"
     normalization: str = "layer"
     #   Encoder
-    keys: str = r"pos"
+    keys: str = r"ur5|box|goal_pos"
     mlp_layers: Layers = ()
     pn_number: int = 1000
     img_size: tuple[int, int] = (84, 84)
@@ -118,7 +118,7 @@ class MPOConfig(Config):
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: Layers = (256, 256, 256)
+    critic_layers: Layers = (512, 512, 256)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -151,8 +151,8 @@ class MPOConfig(Config):
 
     # task
     seed: int = 0
-    task: str = "particle_reach"
-    logdir: str = "logdir/particle_predicate_none"
+    task: str = "src_reach"
+    logdir: str = "logdir/src_predicate_features"
     total_steps: int = 1e9
     time_limit: int = 200
     discretize: bool = True
