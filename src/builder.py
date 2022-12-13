@@ -72,7 +72,7 @@ class Builder:
                 rate_limiter=reverb.rate_limiters.SampleToInsertRatio(
                     min_size_to_sample=self.cfg.min_replay_size,
                     samples_per_insert=self.cfg.samples_per_insert,
-                    error_buffer=.1 * self.cfg.min_replay_size *
+                    error_buffer=.15 * self.cfg.min_replay_size *
                                  self.cfg.samples_per_insert,
                 ),
                 signature=trajectory_signature

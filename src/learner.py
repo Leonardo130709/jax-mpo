@@ -244,7 +244,7 @@ class MPOLearner:
                 actor_loss, metrics_logits = policy_loss(
                     online, a_t, alpha_mean, cfg.epsilon_mean, prefix="mean"
                 )
-                total_loss =\
+                total_loss = \
                     critic_loss + actor_loss + temperature_loss
                 metrics.update(metrics_logits)
                 metrics.update(entropy=online.entropy())
@@ -258,7 +258,7 @@ class MPOLearner:
                     fixed_std, a_t, alpha_mean, cfg.epsilon_mean, prefix="mean")
                 std_loss, metrics_std = policy_loss(
                     fixed_mean, a_t, alpha_std, cfg.epsilon_std, prefix="std")
-                total_loss =\
+                total_loss = \
                     critic_loss + .5 * (mean_loss + std_loss) + temperature_loss
                 metrics.update(metrics_mean)
                 metrics.update(metrics_std)

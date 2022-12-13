@@ -85,7 +85,7 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 2e-2
+    epsilon_eta: float = 1e-1
     epsilon_mean: float = 1e-2
     epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
@@ -99,9 +99,9 @@ class MPOConfig(Config):
 
     # Architecture
     activation: str = "elu"
-    normalization: str = "layer"
+    normalization: str = "none"
     #   Encoder
-    keys: str = r"ur5|box|goal_pos"
+    keys: str = r"ur5|box|goal_pos|relative"
     mlp_layers: Layers = ()
     pn_number: int = 1000
     img_size: tuple[int, int] = (84, 84)
@@ -118,7 +118,7 @@ class MPOConfig(Config):
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: Layers = (512, 512, 256)
+    critic_layers: Layers = (256, 256, 256)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -127,7 +127,7 @@ class MPOConfig(Config):
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
-    learner_dump_every: int = 1
+    learner_dump_every: int = 10
     reverb_port: int = 4445
 
     # training
@@ -141,20 +141,20 @@ class MPOConfig(Config):
     target_critic_update_period: int = 100
     max_seq_len: int = 1000
     eval_every: int = 1e4
-    log_every: int = 1e2
+    log_every: int = 2e2
     save_every: int = 40_000
-    eval_times: int = 20
+    eval_times: int = 10
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
-    num_actors: int = 4
+    num_actors: int = 8
 
     # task
     seed: int = 0
-    task: str = "src_reach"
-    logdir: str = "logdir/src_predicate_features"
+    task: str = "src_fetch"
+    logdir: str = "logdir/src_fetch_predicate4_features"
     total_steps: int = 1e9
     time_limit: int = 200
-    discretize: bool = True
+    discretize: bool = False
     nbins: int = 13
     use_ordinal: bool = False

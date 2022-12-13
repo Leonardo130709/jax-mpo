@@ -123,7 +123,6 @@ class Actor(hk.Module):
             return logits,
 
         mean, std = jnp.split(x, 2, -1)
-        mean = jnp.tanh(mean)
         std = (1 - self.min_std) * jax.nn.sigmoid(std + self._init_std)
         std += self.min_std
         return mean, std
@@ -163,8 +162,8 @@ class DistributionalCritic(hk.Module):
     def __call__(self, state, action, tau):
         chex.assert_equal_rank([state, action, tau])
 
-        state = TanhEmbedding(self.layers[0])(state)
         x = jnp.concatenate([state, action], -1)
+        x = TanhEmbedding(self.layers[0])(x)
         tau = QuantileNetwork(x.shape[-1], self.quantile_embedding_dim)(tau)
         x = jnp.expand_dims(x, -2)
         x = jnp.repeat(x, tau.shape[-2], -2)
@@ -178,8 +177,8 @@ class Critic(DistributionalCritic):
     """Ordinary MLP critic."""
     def __call__(self, state, action, tau=None):
         chex.assert_equal_rank([state, action])
-        state = TanhEmbedding(self.layers[0])(state)
         x = jnp.concatenate([state, action], -1)
+        x = TanhEmbedding(self.layers[0])(x)
         mlp = MLP(self.layers[1:] + (1,), self.act, self.norm)
         return mlp(x)
 
@@ -306,7 +305,7 @@ class Encoder(hk.Module):
 
 def _ndim_partition(items: Dict[str, jnp.ndarray],
                     n: int = 3
-                    ) -> Tuple[Dict[str, jnp.ndarray]]:
+                    ) -> Tuple[Dict[str, jnp.ndarray], ...]:
     """Splits inputs in groups by number of dimensions."""
     structures = tuple(type(items)() for _ in range(n))
     for key, value in items.items():

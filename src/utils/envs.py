@@ -104,7 +104,7 @@ class DMC(dm_env.Environment):
 
 class UR5(dm_env.Environment):
     def __init__(self,
-                 address: tuple[str, str],
+                 address: tuple[str, int],
                  size: tuple[int, int],
                  pn_number: int = 1000
                  ):
