@@ -80,7 +80,7 @@ class MPOLearner:
             _params = networks.init(subkey)
             # Duct tape to remove env_specs which is desirable
             #  with a remote distributed learner.
-            last_bias = _params["actor/linear"]["b"]
+            last_bias = _params["actor/actor/linear"]["b"]
             if cfg.discretize:
                 act_dim = last_bias.size // cfg.nbins
             else:

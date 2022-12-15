@@ -354,7 +354,7 @@ def make_networks(cfg: MPOConfig,
     @hk.multi_transform
     def model():
         
-        def actor(obs):
+        def actor_fn(obs):
             enc = Encoder(
                 cfg.actor_keys,
                 cfg.mlp_layers,
@@ -377,7 +377,7 @@ def make_networks(cfg: MPOConfig,
             )
             return head(enc(obs))
         
-        def critic(obs, act, tau=None):
+        def critic_fn(obs, act, tau=None):
             enc = Encoder(
                 cfg.keys,
                 cfg.mlp_layers,
@@ -399,6 +399,9 @@ def make_networks(cfg: MPOConfig,
             )
             obs = enc(obs)
             return head(obs, act, tau)
+
+        actor = hk.to_module(actor_fn)(name="actor")
+        critic = hk.to_module(critic_fn)(name="critic")
         
         def init():
             obs = preprocess(dummy_obs)
