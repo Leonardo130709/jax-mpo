@@ -133,7 +133,7 @@ class Actor:
                 if lock.acquire(False):
                     returns = []
                     dur = []
-                    self._env.task.eval_flag = False
+                    self._env.task.eval_flag = True
                     for _ in range(self.cfg.eval_times):
                         tr, timestep = env_loop.environment_loop(
                             self._env,

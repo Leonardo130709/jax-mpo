@@ -87,7 +87,7 @@ class MPOConfig(Config):
     tv_constraint: float = 1.
     epsilon_eta: float = 1e-1
     epsilon_mean: float = 1e-2
-    epsilon_std: float = 1e-6
+    epsilon_std: float = 1e-4
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
@@ -114,7 +114,7 @@ class MPOConfig(Config):
     actor_backend: str = "cpu"
     actor_layers: Layers = (256, 256, 256)
     min_std: float = .1
-    init_std: float = .5
+    init_std: float = .3
     #   Critic
     use_iqn: bool = False
     num_critic_heads: int = 2
@@ -123,7 +123,7 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 5e3
-    samples_per_insert: int = 8  # ~6 in 1802.09464
+    samples_per_insert: int = 6  # ~6 in 1802.09464
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -137,7 +137,7 @@ class MPOConfig(Config):
     adam_b2: float = .999
     adam_eps: float = 1e-6
     weight_decay: float = 1e-6
-    target_actor_update_period: int = 100
+    target_actor_update_period: int = 25
     target_critic_update_period: int = 100
     max_seq_len: int = 1000
     eval_every: int = 1e4
@@ -152,7 +152,7 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/src_fetch_predicate4_features"
+    logdir: str = "logdir/src_fetch_predicate_features_small"
     total_steps: int = 1e9
     time_limit: int = 200
     discretize: bool = False
