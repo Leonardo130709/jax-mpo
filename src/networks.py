@@ -379,7 +379,7 @@ def make_networks(cfg: MPOConfig,
         
         def critic_fn(obs, act, tau=None):
             enc = Encoder(
-                cfg.keys,
+                cfg.critic_keys,
                 cfg.mlp_layers,
                 cfg.pn_layers,
                 cfg.cnn_kernels,
