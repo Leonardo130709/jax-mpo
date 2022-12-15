@@ -78,7 +78,8 @@ class MPOLearner:
                   "weights.")
         else:
             _params = networks.init(subkey)
-            # Duct tape.
+            # Duct tape to remove env_specs which is desirable
+            #  with a remote distributed learner.
             last_bias = _params["actor/linear"]["b"]
             if cfg.discretize:
                 act_dim = last_bias.size // cfg.nbins
@@ -114,7 +115,7 @@ class MPOLearner:
 
         client.insert(_params, {"weights": 1})
         param_groups = networks.split_params(_params)
-        names = ("Actor", "Encoder", "Critic")
+        names = ("Actor", "Critic")
         for pg, name in zip(param_groups, names):
             print(f"{name} params: {hk.data_structures.tree_size(pg)}")
 
@@ -126,26 +127,22 @@ class MPOLearner:
                      o_tm1, a_tm1, r_t, discount_t, o_t
                      ):
             sg = jax.lax.stop_gradient
-            k1, k2, k3 = jax.random.split(rng, 3)
-            # Sample quantiles.
-            tau_tm1 = jax.random.uniform(
-                k1,
-                (cfg.num_critic_quantiles,),
-                dtype=a_tm1.dtype
-            )
-            tau_t = jax.random.uniform(
-                k2,
-                (cfg.num_actor_quantiles,),
-                dtype=a_tm1.dtype
-            )
+            # k1, k2, k3 = jax.random.split(rng, 3)
+            # # Sample quantiles.
+            # tau_tm1 = jax.random.uniform(
+            #     k1,
+            #     (cfg.num_critic_quantiles,),
+            #     dtype=a_tm1.dtype
+            # )
+            # tau_t = jax.random.uniform(
+            #     k2,
+            #     (cfg.num_actor_quantiles,),
+            #     dtype=a_tm1.dtype
+            # )
 
-            s_tm1 = networks.encoder(params, o_tm1)
-            target_s_t = networks.encoder(target_params, o_t)
-            s_t = target_s_t
-
-            target_policy_params = networks.actor(target_params, target_s_t)
+            target_policy_params = networks.actor(target_params, o_t)
             target_dist = networks.make_policy(*target_policy_params)
-            a_t = target_dist.sample(seed=k3, sample_shape=cfg.num_actions)
+            a_t = target_dist.sample(seed=rng, sample_shape=cfg.num_actions)
             a_t = a_t.astype(a_tm1.dtype)
 
             if cfg.discretize:
@@ -157,14 +154,15 @@ class MPOLearner:
 
             def repeat(ar):
                 return jnp.repeat(ar[jnp.newaxis], cfg.num_actions, axis=0)
-            target_s_t, tau_t = map(repeat, (target_s_t, tau_t))
+            tiled_o_t = jax.tree_util.tree_map(repeat, o_t)
 
             if cfg.use_iqn:
+                raise NotImplementedError("Just to speed up ordinary critic.")
                 # z_t.shape: (num_actions, num_actor_quantiles, num_critic_heads)
-                z_t = networks.critic(target_params, target_s_t, a_t, tau_t)
+                z_t = networks.critic(target_params, o_t, a_t, tau_t)
                 z_t = jnp.min(z_t, axis=2)  # pessimistic ensemble
                 # z_tm1.shape: (num_critic_quantiles, num_critic_heads)
-                z_tm1 = networks.critic(params, s_tm1, a_tm1, tau_tm1)
+                z_tm1 = networks.critic(params, o_tm1, a_tm1, tau_tm1)
                 v_t = jnp.mean(z_t, axis=0)
                 q_t = jnp.mean(z_t, axis=1)  # risk-neutral agent
                 target_z_tm1 = sg(r_t + discount_t * v_t)
@@ -179,9 +177,10 @@ class MPOLearner:
 
             else:
                 # q_t.shape: (num_actions, num_critic_heads)
-                q_t = networks.critic(target_params, target_s_t, a_t)
+                q_t = jax.vmap(networks.critic, in_axes=(None, 0, 0))\
+                    (target_params, tiled_o_t, a_t)
                 q_t = jnp.min(q_t, axis=1)
-                q_tm1 = networks.critic(params, s_tm1, a_tm1)
+                q_tm1 = networks.critic(params, o_tm1, a_tm1)
                 v_t = jnp.mean(q_t, axis=0)
                 target_q_tm1 = sg(r_t + discount_t * v_t)
                 target_q_tm1 = jnp.clip(target_q_tm1, 0., 1.)
@@ -238,7 +237,7 @@ class MPOLearner:
             )
 
             if cfg.discretize:
-                logits = networks.actor(params, s_t)
+                logits = networks.actor(params, o_t)
                 online = networks.make_policy(*logits)
                 a_t = a_t.reshape(original_shape)
                 actor_loss, metrics_logits = policy_loss(
@@ -249,7 +248,7 @@ class MPOLearner:
                 metrics.update(metrics_logits)
                 metrics.update(entropy=online.entropy())
             else:
-                mean, std = networks.actor(params, s_t)
+                mean, std = networks.actor(params, o_t)
                 target_mean, target_std = target_policy_params
                 fixed_mean = networks.make_policy(target_mean, std)
                 fixed_std = networks.make_policy(mean, target_std)
@@ -289,9 +288,8 @@ class MPOLearner:
             params = optax.apply_updates(params, params_update)
             dual_params = optax.apply_updates(dual_params, dual_update)
 
-            actor_params, encoder_params, critic_params =\
-                networks.split_params(params)
-            target_actor_params, target_encoder_params, target_critic_params = \
+            actor_params, critic_params = networks.split_params(params)
+            target_actor_params, target_critic_params = \
                 networks.split_params(target_params)
 
             target_actor_params = optax.periodic_update(
@@ -300,16 +298,14 @@ class MPOLearner:
                 step,
                 cfg.target_actor_update_period
             )
-            (target_encoder_params, target_critic_params) =\
-                optax.periodic_update(
-                    (encoder_params, critic_params),
-                    (target_encoder_params, target_critic_params),
-                    step,
-                    cfg.target_critic_update_period
+            target_critic_params = optax.periodic_update(
+                critic_params,
+                target_critic_params,
+                step,
+                cfg.target_critic_update_period
                 )
             target_params = hk.data_structures.merge(
                 target_actor_params,
-                target_encoder_params,
                 target_critic_params,
                 check_duplicates=True
             )

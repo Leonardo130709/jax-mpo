@@ -38,8 +38,7 @@ class Actor:
                  ) -> jnp.ndarray:
 
             observation = networks.preprocess(observation)
-            state = networks.encoder(params, observation)
-            policy_params = networks.actor(params, state)
+            policy_params = networks.actor(params, observation)
             dist = networks.make_policy(*policy_params)
             if cfg.discretize:
                 logits = dist.distribution.logits
@@ -126,6 +125,7 @@ class Actor:
             step += env_steps
             with self._total_steps.get_lock():
                 self._total_steps.value += env_steps
+
             self._adder(trajectory)
 
             if should_eval(step):

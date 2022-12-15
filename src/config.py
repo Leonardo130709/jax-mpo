@@ -85,7 +85,7 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 1e-1
+    epsilon_eta: float = 1e-2
     epsilon_mean: float = 1e-2
     epsilon_std: float = 1e-4
     init_log_temperature: float = 10.
@@ -100,8 +100,8 @@ class MPOConfig(Config):
     # Architecture
     activation: str = "elu"
     normalization: str = "none"
-    #   Encoder
-    keys: str = r"ur5|box|goal_pos|relative"
+    #   Encoders
+    keys: str = r".*"
     mlp_layers: Layers = ()
     pn_number: int = 1000
     img_size: tuple[int, int] = (84, 84)
@@ -111,11 +111,13 @@ class MPOConfig(Config):
     cnn_strides: Layers = (4, 2, 1)
     feature_fusion: str = r"$^"
     #   Actor
+    actor_keys: str = r"image"
     actor_backend: str = "cpu"
     actor_layers: Layers = (256, 256, 256)
     min_std: float = .1
     init_std: float = .3
     #   Critic
+    critic_keys: str = r"ur5|box|goal_pos|relative"
     use_iqn: bool = False
     num_critic_heads: int = 2
     critic_layers: Layers = (256, 256, 256)
@@ -152,9 +154,9 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/src_fetch_predicate_features_small"
+    logdir: str = "logdir/src_fetch_assym_images"
     total_steps: int = 1e9
     time_limit: int = 200
     discretize: bool = False
-    nbins: int = 13
+    nbins: int = 11
     use_ordinal: bool = False

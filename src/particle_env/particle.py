@@ -1,4 +1,3 @@
-from typing import NamedTuple
 from collections import OrderedDict
 import os
 
