@@ -92,13 +92,13 @@ class MPOConfig(Config):
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 1000.
     #  HER.
-    goal_sources: tuple[str, ...] = ("box/position",)
-    goal_targets: tuple[str, ...] = ("goal_pos",)
+    goal_sources: tuple[str, ...] = ("box/position", "rgbd")
+    goal_targets: tuple[str, ...] = ("goal_pos", "goal_rgbd")
     augmentation_strategy: str = "future"
     num_augmentations: int = 4
 
     # Architecture
-    activation: str = "elu"
+    activation: str = "relu"
     normalization: str = "none"
     #   Encoders
     keys: str = r".*"
@@ -111,21 +111,21 @@ class MPOConfig(Config):
     cnn_strides: Layers = (4, 2, 1)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_keys: str = r"image"
+    actor_keys: str = r"rgbd"
     actor_backend: str = "cpu"
-    actor_layers: Layers = (256, 256, 256)
+    actor_layers: Layers = (64, 512, 512)
     min_std: float = .1
     init_std: float = .3
     #   Critic
     critic_keys: str = r"ur5|box|goal_pos|relative"
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: Layers = (256, 256, 256)
+    critic_layers: Layers = (512, 512, 256)
     quantile_embedding_dim: int = 64
 
     # reverb
     min_replay_size: int = 5e3
-    samples_per_insert: int = 6  # ~6 in 1802.09464
+    samples_per_insert: int = 4  # ~6 in 1802.09464
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -133,7 +133,7 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 1e-3
+    learning_rate: float = 3e-4
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
@@ -149,12 +149,12 @@ class MPOConfig(Config):
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
-    num_actors: int = 8
+    num_actors: int = 20
 
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/src_fetch_assym_images"
+    logdir: str = "logdir/src_fetch_assym_rgbd"
     total_steps: int = 1e9
     time_limit: int = 200
     discretize: bool = False

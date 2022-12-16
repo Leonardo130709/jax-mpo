@@ -265,8 +265,9 @@ class Encoder(hk.Module):
 
         for pcd in pn_features.values():
             outputs.append(self._pn(pcd))
-        for image in cnn_features.values():
-            outputs.append(self._cnn(image))
+        if cnn_features:
+            images = jnp.concatenate(list(cnn_features.values()), -1)
+            outputs.append(self._cnn(images))
         if not outputs:
             raise ValueError(f"No valid {self.keys!r} in {obs.keys()}")
 
@@ -412,7 +413,7 @@ def make_networks(cfg: MPOConfig,
             tau = jnp.ones(1)
             if cfg.discretize:
                 action = action.flatten()
-            value = critic(obs, action, tau)
+            critic(obs, action, tau)
 
         return init, (actor, critic)
 
