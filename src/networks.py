@@ -265,15 +265,15 @@ class Encoder(hk.Module):
 
         for pcd in pn_features.values():
             outputs.append(self._pn(pcd))
-        if cnn_features:
-            images = jnp.concatenate(list(cnn_features.values()), -1)
-            outputs.append(self._cnn(images))
+        for image in cnn_features.values():
+            outputs.append(self._cnn(image))
         if not outputs:
             raise ValueError(f"No valid {self.keys!r} in {obs.keys()}")
 
         return jnp.concatenate(outputs, -1)
 
     def _cnn(self, x):
+        # Modules are named so params will be shared between calls.
         gen = zip(self.cnn_depths, self.cnn_kernels, self.cnn_strides)
         for i, (depth, kernel, stride) in enumerate(gen):
             x = hk.Conv2D(depth, kernel, stride,

@@ -69,6 +69,7 @@ class Builder:
                 sampler=reverb.selectors.Uniform(),
                 remover=reverb.selectors.Fifo(),
                 max_size=self.cfg.buffer_capacity,
+                max_times_sampled=2 * self.cfg.samples_per_insert,
                 rate_limiter=reverb.rate_limiters.SampleToInsertRatio(
                     min_size_to_sample=self.cfg.min_replay_size,
                     samples_per_insert=self.cfg.samples_per_insert,

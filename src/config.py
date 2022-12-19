@@ -85,11 +85,11 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 1e-2
-    epsilon_mean: float = 1e-2
-    epsilon_std: float = 1e-4
+    epsilon_eta: float = 1e-1
+    epsilon_mean: float = 2.5e-3
+    epsilon_std: float = 1e-6
     init_log_temperature: float = 10.
-    init_log_alpha_mean: float = 10.
+    init_log_alpha_mean: float = 100.
     init_log_alpha_std: float = 1000.
     #  HER.
     goal_sources: tuple[str, ...] = ("box/position", "rgbd")
@@ -106,25 +106,25 @@ class MPOConfig(Config):
     pn_number: int = 1000
     img_size: tuple[int, int] = (84, 84)
     pn_layers: Layers = (64, 128, 256)
-    cnn_depths: Layers = (32, 64, 64)
-    cnn_kernels: Layers = (8, 4, 3)
-    cnn_strides: Layers = (4, 2, 1)
+    cnn_depths: Layers = (64, 64, 64, 64)
+    cnn_kernels: Layers = (4, 4, 4, 4)
+    cnn_strides: Layers = (2, 2, 2, 2)
     feature_fusion: str = r"$^"
     #   Actor
     actor_keys: str = r"rgbd"
     actor_backend: str = "cpu"
-    actor_layers: Layers = (64, 512, 512)
+    actor_layers: Layers = (512, 512, 512)
     min_std: float = .1
     init_std: float = .3
     #   Critic
     critic_keys: str = r"ur5|box|goal_pos|relative"
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: Layers = (512, 512, 256)
+    critic_layers: Layers = (512, 512, 512)
     quantile_embedding_dim: int = 64
 
     # reverb
-    min_replay_size: int = 5e3
+    min_replay_size: int = 1e4
     samples_per_insert: int = 4  # ~6 in 1802.09464
     batch_size: int = 256
     buffer_capacity: int = 1e6
@@ -149,12 +149,12 @@ class MPOConfig(Config):
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
-    num_actors: int = 20
+    num_actors: int = 24
 
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/src_fetch_assym_rgbd"
+    logdir: str = "logdir/src_fetch_assym_rgbd_sep_cnn"
     total_steps: int = 1e9
     time_limit: int = 200
     discretize: bool = False
