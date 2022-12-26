@@ -78,6 +78,7 @@ class MPOConfig(Config):
     discount: float = .98
     action_repeat: int = 1
     n_step: int = 1
+    recon_loss_scale: float = .1
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
@@ -86,11 +87,11 @@ class MPOConfig(Config):
     #  MPO.
     tv_constraint: float = 1.
     epsilon_eta: float = 1e-1
-    epsilon_mean: float = 2.5e-3
-    epsilon_std: float = 1e-6
-    init_log_temperature: float = 10.
-    init_log_alpha_mean: float = 100.
-    init_log_alpha_std: float = 1000.
+    epsilon_mean: float = 1e-2
+    epsilon_std: float = 1e-4
+    init_log_temperature: float = 1.
+    init_log_alpha_mean: float = 1.
+    init_log_alpha_std: float = 100.
     #  HER.
     goal_sources: tuple[str, ...] = ("box/position", "rgbd")
     goal_targets: tuple[str, ...] = ("goal_pos", "goal_rgbd")
@@ -107,8 +108,8 @@ class MPOConfig(Config):
     img_size: tuple[int, int] = (84, 84)
     pn_layers: Layers = (64, 128, 256)
     cnn_depths: Layers = (64, 64, 64, 64)
-    cnn_kernels: Layers = (4, 4, 4, 4)
-    cnn_strides: Layers = (2, 2, 2, 2)
+    cnn_kernels: Layers = (3, 3, 3, 3)
+    cnn_strides: Layers = (2, 2, 1, 1)
     feature_fusion: str = r"$^"
     #   Actor
     actor_keys: str = r"rgbd"
@@ -125,26 +126,26 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 1e4
-    samples_per_insert: int = 4  # ~6 in 1802.09464
+    samples_per_insert: int = 6  # ~6 in 1802.09464
     batch_size: int = 256
-    buffer_capacity: int = 1e6
+    buffer_capacity: int = 1e5
     actor_update_every: int = 1
     learner_dump_every: int = 10
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 3e-4
+    learning_rate: float = 1e-3
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
     adam_eps: float = 1e-6
     weight_decay: float = 1e-6
-    target_actor_update_period: int = 25
+    target_actor_update_period: int = 100
     target_critic_update_period: int = 100
     max_seq_len: int = 1000
     eval_every: int = 1e4
     log_every: int = 2e2
-    save_every: int = 40_000
+    save_every: int = 20_000
     eval_times: int = 10
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
@@ -154,9 +155,9 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/src_fetch_assym_rgbd_sep_cnn"
+    logdir: str = "logdir/src_fetch_assym_rgbd_wrecon"
     total_steps: int = 1e9
-    time_limit: int = 200
+    time_limit: int = 100
     discretize: bool = False
     nbins: int = 11
     use_ordinal: bool = False

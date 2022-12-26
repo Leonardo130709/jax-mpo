@@ -13,7 +13,6 @@ from dm_control.manipulation.shared import workspaces
 _XML_PATH = os.path.join(os.path.dirname(__file__), 'particle.xml')
 SCENE_LIM = .5
 HEIGHT_OFFSET = .1
-TARGET_SITE_SIZE = .02
 THRESHOLD = .01
 CTRL_LIMIT = .05
 _WIDTH, _HEIGHT = IMG_SIZE = (84, 84)
@@ -61,7 +60,7 @@ class ParticleReach(composer.Task):
         self._bbox = scene_bbox
         self._target_site = workspaces.add_target_site(
             self.root_entity.mjcf_model.worldbody,
-            radius=TARGET_SITE_SIZE,
+            radius=THRESHOLD,
             visible=False, rgba="0 0 1 0.3",
             name="target_site"
         )
@@ -141,9 +140,6 @@ class ParticleReach(composer.Task):
     @property
     def task_observables(self):
         return self._task_observables
-
-    def is_ready(self):
-        return self._goal_image is not None
 
     @staticmethod
     def compute_reward(achieved_state, desired_state):

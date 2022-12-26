@@ -80,7 +80,7 @@ class MPOLearner:
             _params = networks.init(subkey)
             # Duct tape to remove env_specs which is desirable
             #  with a remote distributed learner.
-            last_bias = _params["actor/actor/linear"]["b"]
+            last_bias = _params["actor_head/linear"]["b"]
             if cfg.discretize:
                 act_dim = last_bias.size // cfg.nbins
             else:
@@ -139,8 +139,9 @@ class MPOLearner:
             #     (cfg.num_actor_quantiles,),
             #     dtype=a_tm1.dtype
             # )
-
-            target_policy_params = networks.actor(target_params, o_t)
+            target_as_t = networks.actor_encoder(target_params, o_t)
+            target_policy_params = networks.actor_head(
+                target_params, target_as_t)
             target_dist = networks.make_policy(*target_policy_params)
             a_t = target_dist.sample(seed=rng, sample_shape=cfg.num_actions)
             a_t = a_t.astype(a_tm1.dtype)
@@ -151,10 +152,6 @@ class MPOLearner:
                 a_tm1 = a_tm1.flatten()
             else:
                 a_t = jnp.clip(a_t, a_min=-1., a_max=1.)
-
-            def repeat(ar):
-                return jnp.repeat(ar[jnp.newaxis], cfg.num_actions, axis=0)
-            tiled_o_t = jax.tree_util.tree_map(repeat, o_t)
 
             if cfg.use_iqn:
                 raise NotImplementedError("Just to speed up ordinary critic.")
@@ -177,10 +174,12 @@ class MPOLearner:
 
             else:
                 # q_t.shape: (num_actions, num_critic_heads)
-                q_t = jax.vmap(networks.critic, in_axes=(None, 0, 0))\
-                    (target_params, tiled_o_t, a_t)
+                target_cs_t = networks.critic_encoder(target_params, o_t)
+                q_t = jax.vmap(networks.critic_head, in_axes=(None, None, 0)) \
+                    (target_params, target_cs_t, a_t)
                 q_t = jnp.min(q_t, axis=1)
-                q_tm1 = networks.critic(params, o_tm1, a_tm1)
+                cs_tm1 = networks.critic_encoder(params, o_tm1)
+                q_tm1 = networks.critic_head(params, cs_tm1, a_tm1)
                 v_t = jnp.mean(q_t, axis=0)
                 target_q_tm1 = sg(r_t + discount_t * v_t)
                 target_q_tm1 = jnp.clip(target_q_tm1, 0., 1.)
@@ -196,6 +195,11 @@ class MPOLearner:
                     cfg.epsilon_eta,
                     cfg.tv_constraint
                 )
+
+            s_t = networks.actor_encoder(params, o_t)
+            recon_loss = optax.l2_loss(
+                networks.recon_head(params, s_t), target_cs_t)
+            recon_loss = cfg.recon_loss_scale * recon_loss.mean()
 
             def policy_loss(online_dist,
                             actions,
@@ -237,18 +241,18 @@ class MPOLearner:
             )
 
             if cfg.discretize:
-                logits = networks.actor(params, o_t)
+                logits = networks.actor(params, s_t)
                 online = networks.make_policy(*logits)
                 a_t = a_t.reshape(original_shape)
                 actor_loss, metrics_logits = policy_loss(
                     online, a_t, alpha_mean, cfg.epsilon_mean, prefix="mean"
                 )
                 total_loss = \
-                    critic_loss + actor_loss + temperature_loss
+                    critic_loss + actor_loss + temperature_loss + recon_loss
                 metrics.update(metrics_logits)
-                metrics.update(entropy=online.entropy())
+                metrics.update(entropy=online.entropy(), recon_loss=recon_loss)
             else:
-                mean, std = networks.actor(params, o_t)
+                mean, std = networks.actor_head(params, s_t)
                 target_mean, target_std = target_policy_params
                 fixed_mean = networks.make_policy(target_mean, std)
                 fixed_std = networks.make_policy(mean, target_std)
@@ -258,11 +262,13 @@ class MPOLearner:
                 std_loss, metrics_std = policy_loss(
                     fixed_mean, a_t, alpha_std, cfg.epsilon_std, prefix="std")
                 total_loss = \
-                    critic_loss + .5 * (mean_loss + std_loss) + temperature_loss
+                    critic_loss + .5 * (mean_loss + std_loss) \
+                    + temperature_loss + recon_loss
                 metrics.update(metrics_mean)
                 metrics.update(metrics_std)
                 metrics.update(entropy=fixed_mean.entropy(),
-                               pi_stddev=jnp.mean(std)
+                               pi_stddev=jnp.mean(std),
+                               recon_loss=recon_loss
                                )
 
             metrics.update(total_loss=total_loss)
