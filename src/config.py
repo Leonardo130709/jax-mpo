@@ -88,7 +88,7 @@ class MPOConfig(Config):
     tv_constraint: float = 1.
     epsilon_eta: float = 1e-1
     epsilon_mean: float = 1e-2
-    epsilon_std: float = 1e-4
+    epsilon_std: float = 1e-5
     init_log_temperature: float = 1.
     init_log_alpha_mean: float = 1.
     init_log_alpha_std: float = 100.
@@ -105,18 +105,18 @@ class MPOConfig(Config):
     keys: str = r".*"
     mlp_layers: Layers = ()
     pn_number: int = 1000
-    img_size: tuple[int, int] = (84, 84)
+    img_size: tuple[int, int] = (100, 100)
     pn_layers: Layers = (64, 128, 256)
     cnn_depths: Layers = (64, 64, 64, 64)
-    cnn_kernels: Layers = (3, 3, 3, 3)
-    cnn_strides: Layers = (2, 2, 1, 1)
+    cnn_kernels: Layers = (4, 4, 4, 4)
+    cnn_strides: Layers = (2, 2, 2, 2)
     feature_fusion: str = r"$^"
     #   Actor
     actor_keys: str = r"rgbd"
     actor_backend: str = "cpu"
     actor_layers: Layers = (512, 512, 512)
-    min_std: float = .1
-    init_std: float = .3
+    min_std: float = .3
+    init_std: float = 1.
     #   Critic
     critic_keys: str = r"ur5|box|goal_pos|relative"
     use_iqn: bool = False
@@ -134,7 +134,7 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 1e-3
+    learning_rate: float = 3e-4
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
