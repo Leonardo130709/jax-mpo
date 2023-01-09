@@ -78,7 +78,7 @@ class MPOConfig(Config):
     discount: float = .98
     action_repeat: int = 1
     n_step: int = 1
-    recon_loss_scale: float = .1
+    recon_loss_scale: float = 1.
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32
@@ -108,15 +108,15 @@ class MPOConfig(Config):
     img_size: tuple[int, int] = (100, 100)
     pn_layers: Layers = (64, 128, 256)
     cnn_depths: Layers = (64, 64, 64, 64)
-    cnn_kernels: Layers = (4, 4, 4, 4)
-    cnn_strides: Layers = (2, 2, 2, 2)
+    cnn_kernels: Layers = (3, 3, 3, 3)
+    cnn_strides: Layers = (2, 2, 1, 1)
     feature_fusion: str = r"$^"
     #   Actor
     actor_keys: str = r"rgbd"
     actor_backend: str = "cpu"
-    actor_layers: Layers = (512, 512, 512)
-    min_std: float = .3
-    init_std: float = 1.
+    actor_layers: Layers = (64, 512, 512)
+    min_std: float = .2
+    init_std: float = .7
     #   Critic
     critic_keys: str = r"ur5|box|goal_pos|relative"
     use_iqn: bool = False
@@ -140,7 +140,7 @@ class MPOConfig(Config):
     adam_b2: float = .999
     adam_eps: float = 1e-6
     weight_decay: float = 1e-6
-    target_actor_update_period: int = 100
+    target_actor_update_period: int = 25
     target_critic_update_period: int = 100
     max_seq_len: int = 1000
     eval_every: int = 1e4
