@@ -318,11 +318,8 @@ def _ndim_partition(items: Dict[str, jnp.ndarray],
 
 class MPONetworks(NamedTuple):
     init: Callable
-    actor_encoder: Callable
-    actor_head: Callable
-    critic_encoder: Callable
-    critic_head: Callable
-    recon_head: Callable
+    actor: Callable
+    critic: Callable
     make_policy: Callable
     split_params: Callable
     preprocess: Callable
@@ -357,73 +354,68 @@ def make_networks(cfg: MPOConfig,
     @hk.without_apply_rng
     @hk.multi_transform
     def model():
-        actor_encoder = Encoder(
-            cfg.actor_keys,
-            cfg.mlp_layers,
-            cfg.pn_layers,
-            cfg.cnn_kernels,
-            cfg.cnn_depths,
-            cfg.cnn_strides,
-            cfg.activation,
-            cfg.normalization,
-            cfg.feature_fusion,
-            name="actor_encoder"
-        )
-        actor_head = Actor(
-            action_spec,
-            cfg.actor_layers,
-            cfg.activation,
-            cfg.normalization,
-            cfg.min_std,
-            cfg.init_std,
-            cfg.use_ordinal,
-            name="actor_head"
-        )
-        critic_encoder = Encoder(
-            cfg.critic_keys,
-            cfg.mlp_layers,
-            cfg.pn_layers,
-            cfg.cnn_kernels,
-            cfg.cnn_depths,
-            cfg.cnn_strides,
-            cfg.activation,
-            cfg.normalization,
-            cfg.feature_fusion,
-            name="critic_encoder"
-        )
-        critic_head = CriticsEnsemble(
-            cfg.num_critic_heads,
-            cfg.use_iqn,
-            cfg.critic_layers,
-            cfg.quantile_embedding_dim,
-            cfg.activation,
-            cfg.normalization,
-            name="critic_head"
-        )
-        lowdim = sum([
-            v.size for v in dummy_obs.values()
-            if len(v.shape) == 1
-        ])
-        recon_head = hk.Linear(lowdim, name="recon_head")
+
+        def actor_fn(obs):
+            enc = Encoder(
+                cfg.actor_keys,
+                cfg.mlp_layers,
+                cfg.pn_layers,
+                cfg.cnn_kernels,
+                cfg.cnn_depths,
+                cfg.cnn_strides,
+                cfg.activation,
+                cfg.normalization,
+                cfg.feature_fusion
+            )
+            head = Actor(
+                action_spec,
+                cfg.actor_layers,
+                cfg.activation,
+                cfg.normalization,
+                cfg.min_std,
+                cfg.init_std,
+                cfg.use_ordinal
+            )
+            return head(enc(obs))
+
+        def critic_fn(obs, act, tau=None):
+            enc = Encoder(
+                cfg.critic_keys,
+                cfg.mlp_layers,
+                cfg.pn_layers,
+                cfg.cnn_kernels,
+                cfg.cnn_depths,
+                cfg.cnn_strides,
+                cfg.activation,
+                cfg.normalization,
+                cfg.feature_fusion
+            )
+            head = CriticsEnsemble(
+                cfg.num_critic_heads,
+                cfg.use_iqn,
+                cfg.critic_layers,
+                cfg.quantile_embedding_dim,
+                cfg.activation,
+                cfg.normalization
+            )
+            obs = enc(obs)
+            return head(obs, act, tau)
+
+        actor = hk.to_module(actor_fn)(name="actor")
+        critic = hk.to_module(critic_fn)(name="critic")
 
         def init():
             obs = preprocess(dummy_obs)
-            actor_state = actor_encoder(obs)
-            recon_state = recon_head(actor_state)
-            policy_params = actor_head(actor_state)
+            policy_params = actor(obs)
             dist = make_policy(*policy_params)
             key = hk.next_rng_key()
             action = dist.sample(seed=key)
             tau = jnp.ones(1)
             if cfg.discretize:
                 action = action.flatten()
-            critic_state = critic_encoder(obs)
-            chex.assert_equal_shape([critic_state, recon_state])
-            critic_head(critic_state, action, tau)
+            critic(obs, action, tau)
 
-        return init, (actor_encoder, actor_head,
-                      critic_encoder, critic_head,
-                      recon_head)
+        return init, (actor, critic)
 
     def make_policy(*params) -> tfd.Distribution:
         if cfg.discretize:
@@ -435,27 +427,18 @@ def make_networks(cfg: MPOConfig,
         return tfd.Independent(dist, 1)
 
     def split_params(params: hk.Params) -> Tuple[hk.Params]:
-        modules = dict(
-            actor_encoder=0,
-            actor_head=0,
-            recon_head=0,
-            critic_encoder=1,
-            critic_head=1
-        )
+        modules = ("actor", "critic")
 
         def fn(module, name, value):
             name = module.split("/")[0]
-            return modules[name]
+            return modules.index(name)
 
-        return hk.data_structures.partition_n(fn, params, 2)
+        return hk.data_structures.partition_n(fn, params, len(modules))
 
     return MPONetworks(
         init=model.init,
-        actor_encoder=model.apply[0],
-        actor_head=model.apply[1],
-        critic_encoder=model.apply[2],
-        critic_head=model.apply[3],
-        recon_head=model.apply[4],
+        actor=model.apply[0],
+        critic=model.apply[1],
         make_policy=make_policy,
         split_params=split_params,
         preprocess=preprocess

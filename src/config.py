@@ -78,7 +78,6 @@ class MPOConfig(Config):
     discount: float = .98
     action_repeat: int = 1
     n_step: int = 1
-    recon_loss_scale: float = 1.
     #  IQN.
     num_actions: int = 20
     num_actor_quantiles: int = 32

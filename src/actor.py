@@ -38,8 +38,7 @@ class Actor:
                  ) -> jnp.ndarray:
 
             observation = networks.preprocess(observation)
-            observation = networks.actor_encoder(params, observation)
-            policy_params = networks.actor_head(params, observation)
+            policy_params = networks.actor(params, observation)
             dist = networks.make_policy(*policy_params)
             if cfg.discretize:
                 logits = dist.distribution.logits
