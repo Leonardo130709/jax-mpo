@@ -346,8 +346,6 @@ def make_networks(cfg: MPOConfig,
         for key, val in data.items():
             if val.dtype == jnp.uint8:
                 data[key] = val / 255.
-            if "depth" in key:
-                data[key] = jnp.tanh(val / 10.)
 
         return prec.cast_to_compute(data)
 

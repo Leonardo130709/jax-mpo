@@ -87,10 +87,10 @@ class MPOConfig(Config):
     tv_constraint: float = 1.
     epsilon_eta: float = 1e-1
     epsilon_mean: float = 1e-2
-    epsilon_std: float = 1e-5
+    epsilon_std: float = 1e-6
     init_log_temperature: float = 1.
     init_log_alpha_mean: float = 1.
-    init_log_alpha_std: float = 100.
+    init_log_alpha_std: float = 1000.
     #  HER.
     goal_sources: tuple[str, ...] = ("box/position", "rgbd")
     goal_targets: tuple[str, ...] = ("goal_pos", "goal_rgbd")
@@ -107,15 +107,15 @@ class MPOConfig(Config):
     img_size: tuple[int, int] = (100, 100)
     pn_layers: Layers = (64, 128, 256)
     cnn_depths: Layers = (64, 64, 64, 64)
-    cnn_kernels: Layers = (3, 3, 3, 3)
-    cnn_strides: Layers = (2, 2, 1, 1)
+    cnn_kernels: Layers = (4, 4, 4, 4)
+    cnn_strides: Layers = (2, 2, 2, 2)
     feature_fusion: str = r"$^"
     #   Actor
     actor_keys: str = r"rgbd"
     actor_backend: str = "cpu"
-    actor_layers: Layers = (64, 512, 512)
-    min_std: float = .2
-    init_std: float = .7
+    actor_layers: Layers = (512, 512, 512)
+    min_std: float = .1
+    init_std: float = .3
     #   Critic
     critic_keys: str = r"ur5|box|goal_pos|relative"
     use_iqn: bool = False
@@ -149,12 +149,12 @@ class MPOConfig(Config):
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
-    num_actors: int = 24
+    num_actors: int = 20
 
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/src_fetch_assym_rgbd_wrecon"
+    logdir: str = "logdir/fetch_asym"
     total_steps: int = 1e9
     time_limit: int = 100
     discretize: bool = False

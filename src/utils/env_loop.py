@@ -65,25 +65,32 @@ def n_step_fn(trajectory: Trajectory,
               n_step: int = 1,
               discount: float = .99
               ) -> Trajectory:
-    """Computes N-step rewards for the trajectory."""
+    """Computes N-step rewards for the trajectory.
+
+    Do not use n_step_fn with together with augmentations
+    due to ultimate off-policy regime.
+    """
     trajectory = trajectory.copy()
-    obs, rewards, disc = map(
-        trajectory.get,
-        ("observations", "rewards", "discounts")
-    )
-    length = len(rewards)
-    discount_n = discount ** n_step
-    is_not_terminal = disc[-1]
+    # obs, rewards, disc = map(
+    #     trajectory.get,
+    #     ("observations", "rewards", "discounts")
+    # )
+    obs = trajectory["observations"]
+    # assert np.all(disc[:-1] != 0.)
+    # length = len(rewards)
+    # discount_n = discount ** n_step
+    # is_not_terminal = disc[-1]
     next_obs = obs[n_step:] + n_step * [obs[-1]]
-    discounts = \
-        (length - n_step) * [discount_n] + \
-        [is_not_terminal * discount ** i for i in range(n_step, 0, -1)]
+    # discounts = \
+    #     (length - n_step) * [discount_n] + \
+    #     [is_not_terminal * discount ** i for i in range(n_step, 0, -1)]
 
     trajectory["next_observations"] = next_obs
-    trajectory["discounts"] = discounts
+    trajectory["discounts"] *= discount
 
     if n_step == 1:
         return trajectory
+    raise RuntimeError("while HER is in use avoid n-step.")
 
     n_step_rewards = []
     reward = 0

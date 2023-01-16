@@ -100,7 +100,7 @@ class Builder:
             max_in_flight_samples_per_worker=2 * self.cfg.batch_size,
         )
         ds = ds.batch(self.cfg.batch_size, drop_remainder=True)
-        ds = ds.prefetch(5)
+        ds = ds.prefetch(tf.data.AUTOTUNE)
         return ds.as_numpy_iterator()
 
     def make_networks(self, env_specs: EnvironmentSpecs) -> MPONetworks:
