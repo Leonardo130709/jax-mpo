@@ -71,22 +71,22 @@ def n_step_fn(trajectory: Trajectory,
     due to ultimate off-policy regime.
     """
     trajectory = trajectory.copy()
-    # obs, rewards, disc = map(
-    #     trajectory.get,
-    #     ("observations", "rewards", "discounts")
-    # )
-    obs = trajectory["observations"]
+    obs, rewards, disc = map(
+        trajectory.get,
+        ("observations", "rewards", "discounts")
+    )
     # assert np.all(disc[:-1] != 0.)
     # length = len(rewards)
     # discount_n = discount ** n_step
     # is_not_terminal = disc[-1]
     next_obs = obs[n_step:] + n_step * [obs[-1]]
+    disc = [discount * d for d in disc]
     # discounts = \
     #     (length - n_step) * [discount_n] + \
     #     [is_not_terminal * discount ** i for i in range(n_step, 0, -1)]
 
     trajectory["next_observations"] = next_obs
-    trajectory["discounts"] *= discount
+    trajectory["discounts"] = disc
 
     if n_step == 1:
         return trajectory

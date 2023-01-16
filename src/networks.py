@@ -81,7 +81,7 @@ class Actor(hk.Module):
                  act: str = "elu",
                  norm: str = "none",
                  min_std: float = 0.1,
-                 init_std: float = 0.5,
+                 max_std: float = 0.5,
                  use_ordinal: bool = False,
                  name: str = "actor"
                  ):
@@ -95,9 +95,8 @@ class Actor(hk.Module):
         self.act = act
         self.norm = norm
         self.min_std = min_std
+        self.max_std = max_std
         self.use_ordinal = use_ordinal
-        init_std = (1. - min_std) / (init_std - min_std)
-        self._init_std = - jnp.log(init_std - 1)
 
     def __call__(self, state):
         """Actor returns params instead of a distribution itself
@@ -123,8 +122,8 @@ class Actor(hk.Module):
             return logits,
 
         mean, std = jnp.split(x, 2, -1)
-        std = (1 - self.min_std) * jax.nn.sigmoid(std + self._init_std)
-        std += self.min_std
+        std =\
+            (self.max_std - self.min_std) * jax.nn.sigmoid(std) + self.min_std
         return mean, std
 
 

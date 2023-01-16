@@ -157,7 +157,8 @@ class MPOLearner:
             tiled_o_t = jax.tree_util.tree_map(repeat, o_t)
 
             if cfg.use_iqn:
-                raise NotImplementedError("Just to speed up ordinary critic.")
+                raise NotImplementedError("Just to speed up ordinary critic "
+                                          "quantiles are not sampled.")
                 # z_t.shape: (num_actions, num_actor_quantiles, num_critic_heads)
                 z_t = networks.critic(target_params, o_t, a_t, tau_t)
                 z_t = jnp.min(z_t, axis=2)  # pessimistic ensemble

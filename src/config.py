@@ -87,18 +87,18 @@ class MPOConfig(Config):
     tv_constraint: float = 1.
     epsilon_eta: float = 1e-1
     epsilon_mean: float = 1e-2
-    epsilon_std: float = 1e-6
+    epsilon_std: float = 1e-5
     init_log_temperature: float = 1.
     init_log_alpha_mean: float = 1.
-    init_log_alpha_std: float = 1000.
+    init_log_alpha_std: float = 100.
     #  HER.
     goal_sources: tuple[str, ...] = ("box/position", "rgbd")
     goal_targets: tuple[str, ...] = ("goal_pos", "goal_rgbd")
     augmentation_strategy: str = "future"
-    num_augmentations: int = 4
+    num_augmentations: int = 3
 
     # Architecture
-    activation: str = "relu"
+    activation: str = "elu"
     normalization: str = "none"
     #   Encoders
     keys: str = r".*"
@@ -114,8 +114,8 @@ class MPOConfig(Config):
     actor_keys: str = r"rgbd"
     actor_backend: str = "cpu"
     actor_layers: Layers = (512, 512, 512)
-    min_std: float = .1
-    init_std: float = .3
+    min_std: float = .05
+    init_std: float = .5
     #   Critic
     critic_keys: str = r"ur5|box|goal_pos|relative"
     use_iqn: bool = False
@@ -133,7 +133,7 @@ class MPOConfig(Config):
     reverb_port: int = 4445
 
     # training
-    learning_rate: float = 3e-4
+    learning_rate: float = 1e-3
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
