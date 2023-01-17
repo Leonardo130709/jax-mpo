@@ -87,15 +87,15 @@ class MPOConfig(Config):
     tv_constraint: float = 1.
     epsilon_eta: float = 1e-1
     epsilon_mean: float = 1e-2
-    epsilon_std: float = 1e-5
+    epsilon_std: float = 1e-6
     init_log_temperature: float = 1.
     init_log_alpha_mean: float = 1.
-    init_log_alpha_std: float = 100.
+    init_log_alpha_std: float = 1000.
     #  HER.
-    goal_sources: tuple[str, ...] = ("box/position", "rgbd")
-    goal_targets: tuple[str, ...] = ("goal_pos", "goal_rgbd")
+    goal_sources: tuple[str, ...] = ("box/position",)
+    goal_targets: tuple[str, ...] = ("goal_pos",)
     augmentation_strategy: str = "future"
-    num_augmentations: int = 3
+    num_augmentations: int = 4
 
     # Architecture
     activation: str = "elu"
@@ -111,16 +111,16 @@ class MPOConfig(Config):
     cnn_strides: Layers = (2, 2, 2, 2)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_keys: str = r"rgbd"
+    actor_keys: str = r"ur5|box|goal_pos|relative"
     actor_backend: str = "cpu"
-    actor_layers: Layers = (512, 512, 512)
-    min_std: float = .05
+    actor_layers: Layers = (256, 256, 256)
+    min_std: float = .1
     init_std: float = .5
     #   Critic
     critic_keys: str = r"ur5|box|goal_pos|relative"
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: Layers = (512, 512, 512)
+    critic_layers: Layers = (512, 512, 256)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -144,7 +144,7 @@ class MPOConfig(Config):
     max_seq_len: int = 1000
     eval_every: int = 1e4
     log_every: int = 2e2
-    save_every: int = 20_000
+    save_every: int = 40_000
     eval_times: int = 10
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
@@ -154,7 +154,7 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/fetch_asym"
+    logdir: str = "logdir/fetch_features_nomidair"
     total_steps: int = 1e9
     time_limit: int = 100
     discretize: bool = False

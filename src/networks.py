@@ -370,7 +370,7 @@ def make_networks(cfg: MPOConfig,
                 cfg.activation,
                 cfg.normalization,
                 cfg.min_std,
-                cfg.init_std,
+                cfg.max_std,
                 cfg.use_ordinal
             )
             return head(enc(obs))
