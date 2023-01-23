@@ -122,6 +122,7 @@ class Actor(hk.Module):
             return logits,
 
         mean, std = jnp.split(x, 2, -1)
+        mean = 2 * jnp.tanh(mean)
         std =\
             (self.max_std - self.min_std) * jax.nn.sigmoid(std) + self.min_std
         return mean, std

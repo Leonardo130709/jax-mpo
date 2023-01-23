@@ -185,7 +185,7 @@ class MPOLearner:
                 v_t = jnp.mean(q_t, axis=0)
                 target_q_tm1 = sg(r_t + discount_t * v_t)
                 target_q_tm1 = jnp.clip(target_q_tm1, 0., 1.)
-                critic_loss = jnp.square(q_tm1 - target_q_tm1[..., jnp.newaxis])
+                critic_loss = jnp.square(q_tm1 - target_q_tm1[jnp.newaxis])
                 critic_loss = .5 * jnp.mean(critic_loss)
 
             temperature, alpha_mean, alpha_std = \
@@ -263,7 +263,8 @@ class MPOLearner:
                 metrics.update(metrics_mean)
                 metrics.update(metrics_std)
                 metrics.update(entropy=fixed_mean.entropy(),
-                               pi_stddev=jnp.mean(std)
+                               pi_stddev=jnp.mean(std),
+                               pi_mean=jnp.mean(mean),
                                )
 
             metrics.update(total_loss=total_loss)
