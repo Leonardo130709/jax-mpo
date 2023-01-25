@@ -11,7 +11,7 @@ from dm_control.manipulation.shared import workspaces
 
 
 _XML_PATH = os.path.join(os.path.dirname(__file__), 'particle.xml')
-SCENE_LIM = .5
+SCENE_LIM = 1.
 HEIGHT_OFFSET = .1
 THRESHOLD = .01
 CTRL_LIMIT = .05

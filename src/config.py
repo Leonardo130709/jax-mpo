@@ -75,7 +75,7 @@ class MPOConfig(Config):
     """
 
     # Algorithm
-    discount: float = .99
+    discount: float = .98
     action_repeat: int = 1
     n_step: int = 1
     #  IQN.
@@ -86,14 +86,14 @@ class MPOConfig(Config):
     #  MPO.
     tv_constraint: float = 1.
     epsilon_eta: float = 1e-1
-    epsilon_mean: float = 1e-2
+    epsilon_mean: float = 2.5e-3
     epsilon_std: float = 1e-5
-    init_log_temperature: float = 1.
-    init_log_alpha_mean: float = 1.
-    init_log_alpha_std: float = 1000.
+    init_log_temperature: float = 10.
+    init_log_alpha_mean: float = 10.
+    init_log_alpha_std: float = 300.
     #  HER.
-    goal_sources: tuple[str, ...] = ("box/position",)
-    goal_targets: tuple[str, ...] = ("goal_pos",)
+    goal_sources: tuple[str, ...] = ("box/position", "rgbd")
+    goal_targets: tuple[str, ...] = ("goal_pos", "goal_rgbd")
     augmentation_strategy: str = "final"
     num_augmentations: int = 1
 
@@ -104,18 +104,18 @@ class MPOConfig(Config):
     keys: str = r".*"
     mlp_layers: Layers = ()
     pn_number: int = 1000
-    img_size: tuple[int, int] = (100, 100)
+    img_size: tuple[int, int] = (84, 84)
     pn_layers: Layers = (64, 128, 256)
     cnn_depths: Layers = (32, 32, 32, 32)
     cnn_kernels: Layers = (3, 3, 3, 3)
     cnn_strides: Layers = (2, 2, 2, 2)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_keys: str = r"ur5|box|goal_pos|relative"
+    actor_keys: str = r"rgbd"
     actor_backend: str = "cpu"
     actor_layers: Layers = (256, 256, 256)
     min_std: float = .1
-    max_std: float = .7
+    max_std: float = .9
     #   Critic
     critic_keys: str = r"ur5|box|goal_pos|relative"
     use_iqn: bool = False
@@ -125,7 +125,7 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 1e4
-    samples_per_insert: int = 16  # ~6 in 1802.09464
+    samples_per_insert: int = 32  # ~6 in 1802.09464
     batch_size: int = 256
     buffer_capacity: int = 1e5
     actor_update_every: int = 1
@@ -137,9 +137,9 @@ class MPOConfig(Config):
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
-    adam_eps: float = 1e-8
+    adam_eps: float = 1e-6
     weight_decay: float = 0.
-    target_actor_update_period: int = 100
+    target_actor_update_period: int = 25
     target_critic_update_period: int = 100
     max_seq_len: int = 1000
     eval_every: int = 1e4
@@ -149,12 +149,12 @@ class MPOConfig(Config):
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
-    num_actors: int = 20
+    num_actors: int = 4
 
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/fetch_tanh_features"
+    logdir: str = "logdir/fetch_rgbd_smallbox_nomidair"
     total_steps: int = 1e9
     time_limit: int = 100
     discretize: bool = False

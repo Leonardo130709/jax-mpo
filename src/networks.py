@@ -122,7 +122,7 @@ class Actor(hk.Module):
             return logits,
 
         mean, std = jnp.split(x, 2, -1)
-        mean = 2 * jnp.tanh(mean)
+        mean = jnp.tanh(mean)
         std =\
             (self.max_std - self.min_std) * jax.nn.sigmoid(std) + self.min_std
         return mean, std
@@ -179,8 +179,9 @@ class Critic(DistributionalCritic):
         chex.assert_equal_rank([state, action])
         x = jnp.concatenate([state, action], -1)
         x = TanhEmbedding(self.layers[0])(x)
-        mlp = MLP(self.layers[1:] + (1,), self.act, self.norm)
-        return mlp(x)
+        mlp = MLP(self.layers[1:], self.act, self.norm)
+        x = mlp(x)
+        return hk.Linear(1, w_init=hk.initializers.RandomNormal(1e-3))(x)
 
 
 class CriticsEnsemble(hk.Module):
