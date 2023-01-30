@@ -113,7 +113,6 @@ class Actor:
             if should_update(step):
                 self.update_params()
 
-            self._env.task.eval_flag = False
             trajectory, timestep = env_loop.environment_loop(
                 self._env,
                 train_policy,
@@ -133,7 +132,6 @@ class Actor:
                 if lock.acquire(False):
                     returns = []
                     dur = []
-                    self._env.task.eval_flag = False
                     for _ in range(self.cfg.eval_times):
                         tr, timestep = env_loop.environment_loop(
                             self._env,

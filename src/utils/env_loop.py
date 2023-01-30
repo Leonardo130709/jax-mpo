@@ -75,7 +75,7 @@ def n_step_fn(trajectory: Trajectory,
         trajectory.get,
         ("observations", "rewards", "discounts")
     )
-    # assert np.all(disc[:-1] != 0.)
+    assert np.all(discounts)
     # length = len(rewards)
     # discount_n = discount ** n_step
     # is_not_terminal = disc[-1]
@@ -131,7 +131,7 @@ def goal_augmentation(trajectory: Trajectory,
                 obs[gt] = final[gs]
             is_achieved = float(achieved(next_obs, final))
             aug["rewards"][i] = is_achieved
-            aug["discounts"][i] = 1. - is_achieved
+            # aug["discounts"][i] = 1.
         trajectories.extend(amount * [aug])
     elif strategy in ("future", "geom"):
         if strategy == "future":

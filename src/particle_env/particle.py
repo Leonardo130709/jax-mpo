@@ -13,7 +13,7 @@ from dm_control.manipulation.shared import workspaces
 _XML_PATH = os.path.join(os.path.dirname(__file__), 'particle.xml')
 SCENE_LIM = 1.
 HEIGHT_OFFSET = .1
-THRESHOLD = .01
+THRESHOLD = .03
 CTRL_LIMIT = .05
 _WIDTH, _HEIGHT = IMG_SIZE = (84, 84)
 
@@ -109,6 +109,7 @@ class ParticleReach(composer.Task):
         return float(dist < THRESHOLD)
 
     def should_terminate_episode(self, physics):
+        return False
         goal_achieved = self.get_reward(physics) == 1.
         return goal_achieved
 
