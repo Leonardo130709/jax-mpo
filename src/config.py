@@ -85,7 +85,7 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 1e-2
+    epsilon_eta: float = 2e-2
     epsilon_mean: float = 1e-2
     epsilon_std: float = 1e-5
     init_log_temperature: float = 10.
@@ -133,7 +133,7 @@ class MPOConfig(Config):
     reverb_port: int = 4444
 
     # training
-    learning_rate: float = 3e-4
+    learning_rate: float = 1e-3
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
@@ -154,7 +154,7 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/fetch_feat_noterm"
+    logdir: str = "logdir/fetch_feat_noterm_final"
     total_steps: int = 1e9
     time_limit: int = 100
     discretize: bool = True

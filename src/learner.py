@@ -184,9 +184,10 @@ class MPOLearner:
                 q_tm1 = networks.critic(params, o_tm1, a_tm1)
                 v_t = jnp.mean(q_t, axis=0)
                 target_q_tm1 = sg(r_t + discount_t * v_t)
-                # target_q_tm1 = jnp.clip(target_q_tm1, 0., 1.)
+                horizon = 1. / (1 - cfg.discount)
+                target_q_tm1 = jnp.clip(target_q_tm1, 0., horizon)
                 critic_loss = jnp.square(q_tm1 - target_q_tm1[jnp.newaxis])
-                critic_loss = .5 * jnp.mean(critic_loss)
+                critic_loss = optax.huber_loss(critic_loss, delta=5.).mean()
 
             temperature, alpha_mean, alpha_std = \
                 jax.tree_util.tree_map(ops.softplus, dual_params)
