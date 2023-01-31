@@ -1,8 +1,6 @@
 numpy
-matplotlib
 jax
 optax
-rlax
 chex
 dm-haiku
 tensorflow

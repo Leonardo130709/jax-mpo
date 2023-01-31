@@ -144,7 +144,8 @@ class Builder:
         elif domain == "particle":
             from src.particle_env import ParticleEnv
             # episode_steps = time_limit / (physics_timestep:default=.05)
-            env = ParticleEnv(time_limit=5, random_state=seed)
+            time_limit = .05 * self.cfg.time_limit
+            env = ParticleEnv(time_limit=time_limit, random_state=seed)
         else:
             raise NotImplementedError
 

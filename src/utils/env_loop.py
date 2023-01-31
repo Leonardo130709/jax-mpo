@@ -122,16 +122,21 @@ def goal_augmentation(trajectory: Trajectory,
 
     trajectories = [trajectory]
     if strategy == "final":
+
+        def hindsight_fn(achieved_obs, desired_obs):
+            for gs, gt in zip(goal_sources, goal_targets):
+                achieved_obs[gt] = desired_obs[gs]
+
         aug = copy.deepcopy(trajectory)
         final = aug["observations"][-1]
         for i in range(length):
             obs = aug["observations"][i]
             next_obs = aug["observations"][i+1]
-            for gs, gt in zip(goal_sources, goal_targets):
-                obs[gt] = final[gs]
+            hindsight_fn(obs, final)
             is_achieved = float(achieved(next_obs, final))
             aug["rewards"][i] = is_achieved
             # aug["discounts"][i] = 1.
+        hindsight_fn(final, final)
         trajectories.extend(amount * [aug])
     elif strategy in ("future", "geom"):
         if strategy == "future":

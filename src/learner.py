@@ -187,7 +187,7 @@ class MPOLearner:
                 horizon = 1. / (1 - cfg.discount)
                 target_q_tm1 = jnp.clip(target_q_tm1, 0., horizon)
                 critic_loss = jnp.square(q_tm1 - target_q_tm1[jnp.newaxis])
-                critic_loss = optax.huber_loss(critic_loss, delta=5.).mean()
+                critic_loss = .5 * jnp.mean(critic_loss)
 
             temperature, alpha_mean, alpha_std = \
                 jax.tree_util.tree_map(ops.softplus, dual_params)
