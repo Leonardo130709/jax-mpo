@@ -180,12 +180,12 @@ class MPOLearner:
                 # q_t.shape: (num_actions, num_critic_heads)
                 q_t = jax.vmap(networks.critic, in_axes=(None, 0, 0))\
                     (target_params, tiled_o_t, a_t)
-                q_t = jnp.min(q_t, axis=1)
-                q_tm1 = networks.critic(params, o_tm1, a_tm1)
-                v_t = jnp.mean(q_t, axis=0)
-                target_q_tm1 = sg(r_t + discount_t * v_t)
                 horizon = 1. / (1 - cfg.discount)
-                target_q_tm1 = jnp.clip(target_q_tm1, 0., horizon)
+                q_t = jnp.clip(q_t, 0., horizon)
+                q_t = jnp.min(q_t, axis=1)
+                v_t = jnp.mean(q_t, axis=0)
+                q_tm1 = networks.critic(params, o_tm1, a_tm1)
+                target_q_tm1 = sg(r_t + discount_t * v_t)
                 critic_loss = jnp.square(q_tm1 - target_q_tm1[jnp.newaxis])
                 critic_loss = .5 * jnp.mean(critic_loss)
 

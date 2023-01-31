@@ -140,7 +140,7 @@ class Actor:
                         )
                         returns.append(sum(tr["rewards"]))
                         dur.append(len(tr["actions"]))
-                        returns = np.array(returns)
+                    returns = np.array(returns)
     
                     metrics = {
                         "step": self._total_steps.value,

@@ -91,17 +91,17 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 2e-2
+    epsilon_eta: float = 1e-1
     epsilon_mean: float = 1e-1
     epsilon_std: float = 1e-5
-    init_log_temperature: float = 10.
-    init_log_alpha_mean: float = 10.
+    init_log_temperature: float = 1.
+    init_log_alpha_mean: float = 1.
     init_log_alpha_std: float = 300.
     #  HER.
     goal_sources: tuple[str, ...] = ("box/position",)# "rgbd")
     goal_targets: tuple[str, ...] = ("goal_pos",)# "goal_rgbd")
-    augmentation_strategy: str = "final"
-    num_augmentations: int = 1
+    augmentation_strategy: str = "future"
+    num_augmentations: int = 4
 
     # Architecture
     activation: str = "elu"
@@ -131,7 +131,7 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 1e4
-    samples_per_insert: int = 16  # ~6 in 1802.09464
+    samples_per_insert: float = 6.4  # ~6.4 in 1802.09464
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1

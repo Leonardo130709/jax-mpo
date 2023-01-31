@@ -110,8 +110,6 @@ class ParticleReach(composer.Task):
 
     def should_terminate_episode(self, physics):
         return False
-        goal_achieved = self.get_reward(physics) == 1.
-        return goal_achieved
 
     def action_spec(self, physics):
         lim = np.float32([1, 1])
