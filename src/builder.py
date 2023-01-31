@@ -147,7 +147,7 @@ class Builder:
             time_limit = .05 * self.cfg.time_limit
             env = ParticleEnv(time_limit=time_limit, random_state=seed)
         else:
-            raise NotImplementedError
+            raise ValueError(self.cfg.task)
 
         env = dmc_wrappers.ObsFilter(env, self.cfg.keys)
         env = dmc_wrappers.ActionRepeat(env, self.cfg.action_repeat)

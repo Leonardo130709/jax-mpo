@@ -11,35 +11,38 @@ class MPOConfig(Config):
         discount: MDP discount factor.
         action_repeat: repeat an action for multiple timesteps.
         n_step: multistep update w/o off-policy corrections.
-        num_actions: number of actions in the MPO estimation step.
-        num_actor_quantiles: number of quantiles in the distributional policy improvement.
-        num_critic_quantiles: number of quantiles in the distributional policy learning.
+        num_actions: number of actions in MPO estimation step.
+        num_actor_quantiles: number of quantiles in distributional policy improvement.
+        num_critic_quantiles: number of quantiles in distributional policy learning.
         hubber_delta: threshold for switching between L1 / L2 loss.
-        tv_constraint: clipping in the MPO E-step to prevent rapid policy changes.
-        epsilon_eta:  target KL divergence in the MPO E-step.
+        tv_constraint: clipping in MPO E-step to prevent rapid policy changes.
+        epsilon_eta:  target KL divergence in MPO E-step.
         epsilon_mean: target KL in MPO M-step for mean distribution.
         epsilon_std: target KL in MPO M-step for stddev distribution.
         init_log_temperatrue: initial value of MPO E-step loss dual parameter.
         init_log_alpha_mean: initial value of MPO M-step mean KL dual parameter.
         init_log_alpha_std: initial value of MPO M-step std KL dual parameter.
-        hindsight_goal_key: source of hindsight goal relabelling.
+        goal_sources: source keys for goal in obs dict (a.k.a achieved state in gym.GoalEnv)
+        goal_targets: target goal keys in obs dict. (a.k.a desired state in gym.GoalEnv)
         augmentation_strategy: (none, final, future) as in the HER paper.
         num_augmentations: number of trajectory augmentations.
         activation: which activation to use for all the networks.
         normalization: preactivation normalization to use everywhere.
-        keys: valid observations regex filter.
+        keys: observation keys regex filter.
         mlp_layers: encoder's mlp layers.
         pn_number: number of points per point cloud observation.
-        img_size: pixels observations shape.
+        img_size: image observations shape.
         pn_layers: encoder's point net layers.
         cnn_depths: encoder's cnn depths.
         cnn_kernels: encoder's cnn kernels.
         cnn_strides: encoder's cnn strides.
         feature_fusion: regex filter for observations which should be concatenated with lowdim features.
+        actor_keys: regex filter for actor's observation keys.
         actor_backend: gpu or cpu jax.backend.
         actor_layers: actor's MLP hidden layers.
         min_std: minimal stddev value of actor's normal policy.
-        init_std: initial stddev value of actor's normal policy.
+        max_std: maximum stddev value of actor's normal policy.
+        critic_keys: regex filter for critic observation keys.
         use_iqn: ordinary or distributional critic choice.
         num_critic_heads: number of critics heads.
         critic_layers: critic's MLP hidden layers.
@@ -48,8 +51,8 @@ class MPOConfig(Config):
         samples_per_insert: number of gradient steps per one environment step.
         batch_size: learner batch_size.
         buffer_capacity: maximum replay buffer size.
-        actor_update_every: number of steps before fetching new weights.
-        learner_dump_every: number of gradient steps before saving a replay buffer.
+        actor_update_every: number of env steps to fetch new weights.
+        learner_dump_every: number of gradient steps for checkpoint.
         reverb_port: reverb.Server port.
         learning_rate: common for all the networks.
         dual_lr: dual params learning rate.
@@ -70,8 +73,11 @@ class MPOConfig(Config):
         seed: random seed.
         task: rl task.
         logdir: logging dir.
-        total_steps: maximum number of interactions with the env.
+        total_steps: maximum number of env steps.
         time_limit: impose env maximum episode length.
+        discretize: use continuous or discrete action space.
+        nbins: number of bin per dimension.
+        use_ordinal: apply ordinal regression.
     """
 
     # Algorithm
@@ -86,7 +92,7 @@ class MPOConfig(Config):
     #  MPO.
     tv_constraint: float = 1.
     epsilon_eta: float = 2e-2
-    epsilon_mean: float = 1e-2
+    epsilon_mean: float = 1e-1
     epsilon_std: float = 1e-5
     init_log_temperature: float = 10.
     init_log_alpha_mean: float = 10.
@@ -125,7 +131,7 @@ class MPOConfig(Config):
 
     # reverb
     min_replay_size: int = 1e4
-    samples_per_insert: int = 8  # ~6 in 1802.09464
+    samples_per_insert: int = 16  # ~6 in 1802.09464
     batch_size: int = 256
     buffer_capacity: int = 1e6
     actor_update_every: int = 1
@@ -133,12 +139,12 @@ class MPOConfig(Config):
     reverb_port: int = 4444
 
     # training
-    learning_rate: float = 1e-3
+    learning_rate: float = 3e-4
     dual_lr: float = 1e-2
     adam_b1: float = .9
     adam_b2: float = .999
     adam_eps: float = 1e-6
-    weight_decay: float = 1e-4
+    weight_decay: float = 0.
     target_actor_update_period: int = 100
     target_critic_update_period: int = 100
     max_seq_len: int = 1000
@@ -156,7 +162,7 @@ class MPOConfig(Config):
     task: str = "src_fetch"
     logdir: str = "logdir/fetch_feat_noterm_final"
     total_steps: int = 1e9
-    time_limit: int = 100
+    time_limit: int = 50
     discretize: bool = True
     nbins: int = 13
     use_ordinal: bool = False

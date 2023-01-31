@@ -140,12 +140,14 @@ class Actor:
                         )
                         returns.append(sum(tr["rewards"]))
                         dur.append(len(tr["actions"]))
+                        returns = np.array(returns)
     
                     metrics = {
                         "step": self._total_steps.value,
                         "time_expired": time.time() - start,
                         "train_return": sum(trajectory["rewards"]),
                         "eval_return_mean": np.mean(returns),
+                        "eval_success_mean": np.mean(returns > 0),
                         "eval_return_std": np.std(returns),
                         "eval_duration_mean": np.mean(dur),
                     }
