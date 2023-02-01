@@ -91,7 +91,7 @@ class MPOConfig(Config):
     hubber_delta: float = 1.
     #  MPO.
     tv_constraint: float = 1.
-    epsilon_eta: float = 1e-1
+    epsilon_eta: float = 2e-2
     epsilon_mean: float = 1e-1
     epsilon_std: float = 1e-5
     init_log_temperature: float = 1.
@@ -107,7 +107,7 @@ class MPOConfig(Config):
     activation: str = "elu"
     normalization: str = "none"
     #   Encoders
-    keys: str = r"ur5|box|goal_pos|dist"
+    keys: str = r"ur5|box|goal_pos"
     mlp_layers: Layers = ()
     pn_number: int = 1000
     img_size: tuple[int, int] = (84, 84)
@@ -117,13 +117,16 @@ class MPOConfig(Config):
     cnn_strides: Layers = (2, 2, 2, 2)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_keys: str = r"ur5|box|goal_pos|dist"
+    actor_keys: str = r"ur5|box|goal_pos"
     actor_backend: str = "cpu"
+    discretize: bool = True
+    nbins: int = 11
+    use_ordinal: bool = False
     actor_layers: Layers = (256, 256, 256)
     min_std: float = .05
     max_std: float = .9
     #   Critic
-    critic_keys: str = r"ur5|box|goal_pos|dist"
+    critic_keys: str = r"ur5|box|goal_pos"
     use_iqn: bool = False
     num_critic_heads: int = 2
     critic_layers: Layers = (512, 512, 256)
@@ -155,14 +158,11 @@ class MPOConfig(Config):
     grad_norm: float = 40.
     mp_policy: str = "p=f32,c=f32,o=f32"
     jit: bool = True
-    num_actors: int = 12
+    num_actors: int = 8
 
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/fetch_feat_noterm_final"
+    logdir: str = "logdir/fetch_nodist_disc_future"
     total_steps: int = 1e9
     time_limit: int = 50
-    discretize: bool = True
-    nbins: int = 13
-    use_ordinal: bool = False
