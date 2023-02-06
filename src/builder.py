@@ -171,7 +171,7 @@ def _make_env(rng):
     spec.loader.exec_module(module)
     from src import suite
     env = suite.load('fetch',
-                     env_kwargs={'time_limit': 10, 'random_state': rng}
+                     env_kwargs={'time_limit': 26, 'random_state': rng}
                      )
     if mem is not None:
         sys.modules["src"] = mem
