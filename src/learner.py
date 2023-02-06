@@ -48,7 +48,6 @@ class MPOLearner:
             train_dataset: "Dataset",
             client: reverb.Client
     ):
-        jax.config.update("jax_disable_jit", not cfg.jit)
         rng_key = jax.device_put(rng_key)
         key, subkey = jax.random.split(rng_key)
         self._cfg = cfg
@@ -152,10 +151,6 @@ class MPOLearner:
             else:
                 a_t = jnp.clip(a_t, a_min=-1., a_max=1.)
 
-            def repeat(ar):
-                return jnp.repeat(ar[jnp.newaxis], cfg.num_actions, axis=0)
-            tiled_o_t = jax.tree_util.tree_map(repeat, o_t)
-
             if cfg.use_iqn:
                 raise NotImplementedError("Just to speed up ordinary critic "
                                           "quantiles are not sampled.")
@@ -178,14 +173,14 @@ class MPOLearner:
 
             else:
                 # q_t.shape: (num_actions, num_critic_heads)
-                q_t = jax.vmap(networks.critic, in_axes=(None, 0, 0))\
-                    (target_params, tiled_o_t, a_t)
+                q_t = jax.vmap(networks.critic, in_axes=(None, None, 0))\
+                    (target_params, o_t, a_t)
                 horizon = 1. / (1 - cfg.discount)
-                q_t = jnp.clip(q_t, 0., horizon)
+                q_t = jnp.clip(q_t, a_min=0., a_max=horizon)
                 q_t = jnp.min(q_t, axis=1)
                 v_t = jnp.mean(q_t, axis=0)
-                q_tm1 = networks.critic(params, o_tm1, a_tm1)
                 target_q_tm1 = sg(r_t + discount_t * v_t)
+                q_tm1 = networks.critic(params, o_tm1, a_tm1)
                 critic_loss = jnp.square(q_tm1 - target_q_tm1[jnp.newaxis])
                 critic_loss = .5 * jnp.mean(critic_loss)
 
@@ -376,7 +371,9 @@ class MPOLearner:
                 loss_scale=loss_scale,
             ), metrics
 
-        self._step = jax.jit(_step)
+        if cfg.jit:
+            _step = jax.jit(_step)
+        self._step = _step
 
     def run(self):
         logger = TFSummaryLogger(logdir=self._cfg.logdir,

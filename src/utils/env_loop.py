@@ -71,22 +71,22 @@ def n_step_fn(trajectory: Trajectory,
     due to ultimate off-policy regime.
     """
     trajectory = trajectory.copy()
-    obs, rewards, discounts = map(
+    obs, rewards, disc = map(
         trajectory.get,
         ("observations", "rewards", "discounts")
     )
-    assert np.all(discounts)
+    # assert np.all(disc)
     # length = len(rewards)
     # discount_n = discount ** n_step
     # is_not_terminal = disc[-1]
     next_obs = obs[n_step:] + n_step * [obs[-1]]
-    discounts = [discount * d for d in discounts]
+    disc = [discount * d for d in disc]
     # discounts = \
     #     (length - n_step) * [discount_n] + \
     #     [is_not_terminal * discount ** i for i in range(n_step, 0, -1)]
 
     trajectory["next_observations"] = next_obs
-    trajectory["discounts"] = discounts
+    trajectory["discounts"] = disc
 
     if n_step == 1:
         return trajectory
@@ -134,8 +134,11 @@ def goal_augmentation(trajectory: Trajectory,
             next_obs = aug["observations"][i+1]
             hindsight_fn(obs, final)
             is_achieved = float(achieved(next_obs, final))
+            if (i == 0) and is_achieved:
+                # If the task is solved from the beginning - ignore it.
+                return trajectories
             aug["rewards"][i] = is_achieved
-            # aug["discounts"][i] = 1.
+            # aug["discounts"][i] = 1. - is_achieved
         hindsight_fn(final, final)
         trajectories.extend(amount * [aug])
     elif strategy in ("future", "geom"):
