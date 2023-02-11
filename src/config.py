@@ -112,7 +112,7 @@ class MPOConfig(Config):
     pn_number: int = 1000
     img_size: tuple[int, int] = (100, 100)
     pn_layers: Layers = (64, 128, 256)
-    cnn_depths: Layers = (32, 32, 32, 32)
+    cnn_depths: Layers = (64, 64, 64, 64)
     cnn_kernels: Layers = (3, 3, 3, 3)
     cnn_strides: Layers = (2, 2, 2, 2)
     feature_fusion: str = r"$^"
@@ -122,14 +122,14 @@ class MPOConfig(Config):
     discretize: bool = True
     nbins: int = 11
     use_ordinal: bool = False
-    actor_layers: Layers = (256, 256, 256)
+    actor_layers: Layers = (512, 512, 512)
     min_std: float = .05
     max_std: float = .9
     #   Critic
     critic_keys: str = r"ur5|box|goal_pos|dist"
     use_iqn: bool = False
     num_critic_heads: int = 2
-    critic_layers: Layers = (512, 512, 256)
+    critic_layers: Layers = (512, 512, 512)
     quantile_embedding_dim: int = 64
 
     # reverb
@@ -163,6 +163,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/fetch_wfilter_disc_rgbd"
+    logdir: str = "logdir/fetch_wfilter_midair_nogrounded_disc_rgbd"
     total_steps: int = 1e9
     time_limit: int = 50

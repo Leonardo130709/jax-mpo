@@ -137,8 +137,9 @@ class Builder:
             env = envs.DMC(task, seed, self.cfg.img_size, 0, self.cfg.pn_number)
         elif domain == "ur":
             assert self.cfg.action_repeat == 1
-            address = ("10.201.2.136", 5553)
-            env = envs.UR5(address, self.cfg.img_size, self.cfg.pn_number)
+            address = ("10.201.2.136", 5555)
+            from ur_env.remote import RemoteEnvClient
+            env = RemoteEnvClient(address)
         elif domain == "src":
             env = _make_env(seed)
         elif domain == "particle":
@@ -155,6 +156,12 @@ class Builder:
             env = dmc_wrappers.DiscreteActionWrapper(env, self.cfg.nbins)
         else:
             env = dmc_wrappers.ActionRescale(env)
+        if domain == 'ur':
+            from typing import NamedTuple
+            class EnvironmentSpecs(NamedTuple):
+                observation_spec = env.observation_spec()
+                action_spec = env.action_spec()
+            return env, EnvironmentSpecs()
         return env, env.environment_specs
 
 
