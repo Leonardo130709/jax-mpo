@@ -98,8 +98,8 @@ class MPOConfig(Config):
     init_log_alpha_mean: float = 10.
     init_log_alpha_std: float = 300.
     #  HER.
-    goal_sources: tuple[str, ...] = ("box/position", "rgbd")
-    goal_targets: tuple[str, ...] = ("goal_pos", "goal_rgbd")
+    goal_sources: tuple[str, ...] = ("box/position", "rgb")
+    goal_targets: tuple[str, ...] = ("goal_pos", "goal_rgb")
     augmentation_strategy: str = "final"
     num_augmentations: int = 1
 
@@ -117,7 +117,7 @@ class MPOConfig(Config):
     cnn_strides: Layers = (2, 2, 2, 2)
     feature_fusion: str = r"$^"
     #   Actor
-    actor_keys: str = r"rgbd"
+    actor_keys: str = r"rgb"
     actor_backend: str = "cpu"
     discretize: bool = True
     nbins: int = 11
@@ -163,6 +163,6 @@ class MPOConfig(Config):
     # task
     seed: int = 0
     task: str = "src_fetch"
-    logdir: str = "logdir/fetch_wfilter_midair_nogrounded_disc_rgbd"
+    logdir: str = "logdir/fetch_rgb"
     total_steps: int = 1e9
     time_limit: int = 50
